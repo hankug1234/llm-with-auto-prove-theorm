@@ -1,0 +1,90 @@
+# ----------------------------------------------------------------------
+#  기본 Python 무시 목록
+# ----------------------------------------------------------------------
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions / compiled modules
+*.so
+*.pyd
+*.dll
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+#  이 디렉터리는 PyInstaller가 생성하는 실행 파일 등의 산출물
+#  예) dist/project_name/
+*.manifest
+*.spec
+
+# Unit test / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# 기타 IDE, 편집기, 시스템 파일
+*.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+*.sublime-*
+.project
+.pydevproject
+*.iml
+
+# ----------------------------------------------------------------------
+#  ▶▶ 가상환경(virtual environment) 디렉터리 무시 ◀◀
+#     ‘venv’, ‘env’, ‘.env’, ‘.venv’ 등 이름을 가진 폴더 전체
+# ----------------------------------------------------------------------
+#  최상위뿐 아니라 하위 디렉터리에 있어도 무시하도록 **패턴** 사용
+#  예) backend/venv/  또는 docs/.venv/  등
+# ----------------------------------------------------------------------
+venv/
+env/
+ENV/
+.venv/
+.env/
+# 패턴 매칭: 어느 위치든 해당 이름이 보이면 무시 (슬래시 없이)
+venv
+env
+ENV
+.venv
+.env
+
+# ----------------------------------------------------------------------
+#  (선택) Poetry / Pipenv 중심 프로젝트일 경우
+# ----------------------------------------------------------------------
+# .venv 은 이미 위에서 무시했으므로 필요 없을 수도 있습니다.
+# ----------------------------------------------------------------------
+# Pipenv
+Pipfile.lock
+
+# Poetry
+poetry.lock
