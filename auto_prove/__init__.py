@@ -26,14 +26,28 @@ class Fun:
             and len(self.args) == len(other.args)
             and all(a == b for a, b in zip(self.args, other.args))
         )
-
+        
+class Predicate:
+    def __init__(self, name: str, args: List['Term']):
+        self.name = name
+        self.args = args
+    def __repr__(self):
+        return f"{self.name}({', '.join(map(str, self.args))})"
+    def __eq__(self, other):
+        return (
+            isinstance(other, Predicate)
+            and self.name == other.name
+            and len(self.args) == len(other.args)
+            and all(a == b for a, b in zip(self.args, other.args))
+        )
+        
 class Constance:
     def __init__(self, const: str):
         self.const = const 
     def __repr__(self):
         return f"{self.const}"
     def __eq__(self, other):
-        return self.const == other
+        return isinstance(other, Constance) and self.const == other.const
 
 
 class Operation(Enum):
@@ -48,39 +62,31 @@ class Operation(Enum):
     NOT_REVERSED_IMPLIE = "notrevimp"
     SOME = "some"
     ALL = "all"
+    EQUAL = "equal"
     
-    def is_unary_ops(self,op):
-        if op in [Operation.NEG]:
-            return True 
-        return False 
-    
-    def is_binary_ops(self,op):
-        if op in [
-                  Operation.AND, 
-                  Operation.OR,
-                  Operation.IMPLIE,
-                  Operation.REVERSED_IMPLIE,
-                  Operation.NOR, 
-                  Operation.NAND,
-                  Operation.NOT_IMPLIE, 
-                  Operation.NOT_REVERSED_IMPLIE
-                ]:
-            return True 
-        return False 
-    
-    def is_quantifiers(self,op):
-        if op in [
-                   Operation.SOME,
-                   Operation.ALL
-                ]:
-            return True 
-        return False 
+    def is_unary_ops(self) -> bool:
+        return self == Operation.NEG
+
+    def is_binary_ops(self) -> bool:
+        return self in {
+            Operation.AND, Operation.OR, Operation.IMPLIE, Operation.REVERSED_IMPLIE,
+            Operation.NOR, Operation.NAND, Operation.NOT_IMPLIE, Operation.NOT_REVERSED_IMPLIE
+        }
+
+    def is_quantifiers(self) -> bool:
+        return self in {Operation.SOME, Operation.ALL}
         
 # --- 용어 정의 ------------------------------------------------------------
 # Term: 원자 기호나 함수 응용, 혹은 문자열(변수/상수)
 Term = Union[Var, Fun, Constance]
 Env = List[Tuple[Var, Term]]
-Formula = Tuple[Union[Term, Operation]]
+Formula = Union[
+    bool,
+    Predicate,
+    Term,
+    Tuple[Operation, 'Formula'],                # 단항
+    Tuple[Operation, 'Formula', 'Formula']      # 이항
+]
 Notated = Tuple[List[Var], Formula]
 
 def partial_value(term: Term, env: Env) -> Term:
