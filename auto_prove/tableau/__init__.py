@@ -1,8 +1,7 @@
 from typing import List, Tuple,  Optional
 import itertools, sys 
 sys.path.append(".")
-from auto_prove import unify_list, Formula, Notated, Term, Fun, Constance, Var, Operation, Predicate
-
+from auto_prove import unify_list, Formula, Notated, Term, Fun, Var, Operation, Predicate
 
 
 # --- Skolem 함수 인덱스 관리 ---------------------------------------------
@@ -237,25 +236,12 @@ def singlestep(
                 new_branch = branch + [make_notated([], reflex)]
                 new_tableau = tableau[:b_idx] + [new_branch] + tableau[b_idx+1:]
                 return (new_tableau, qdepth)
-
-        # ──────────────────────────────────────────────────────────────
-        # 6) Equality reflexivity CLOSURE   ( ¬(t = t) → false )
-        # ----------------------------------------------------------------
-        for free, frm in branch:
-            if isinstance(frm, tuple) and frm[0] == Operation.NEG:
-                inner = frm[1]
-                if isinstance(inner, tuple) and inner[0] == "=" and inner[1] == inner[2]:
-                    new_branch = branch + [([], "false")]
-                    new_tableau = tableau[:b_idx] + [new_branch] + tableau[b_idx+1:]
-                    return (new_tableau, qdepth)
-
-        # ──────────────────────────────────────────────────────────────
-        # 7) Equality SUBSTITUTIVITY (원자식 치환)  <— 기존 규칙 보강
-        # ----------------------------------------------------------------
+            
+        # 6) Equality SUBSTITUTIVITY (원자식 치환)  <— 기존 규칙 보강
         eqs = [
             (eqf[1], eqf[2])
             for _, eqf in branch
-            if isinstance(eqf, tuple) and eqf[0] == "=" and len(eqf) == 3
+            if isinstance(eqf, tuple) and eqf[0] == Operation.EQUAL and len(eqf) == 3
         ]
         if eqs:
             existing_forms = {frm for _, frm in branch}            # 중복 방지
@@ -277,7 +263,18 @@ def singlestep(
                         new_branch = branch + [make_notated(free, new_f)]
                         new_tableau = tableau[:b_idx] + [new_branch] + tableau[b_idx+1:]
                         return (new_tableau, qdepth)
-        # 7) Delta (existential)
+
+        # 7) Equality reflexivity CLOSURE   ( ¬(t = t) → false )
+        for free, frm in branch:
+            if isinstance(frm, tuple) and frm[0] == Operation.NEG:
+                inner = frm[1]
+                if isinstance(inner, tuple) and inner[0] == "=" and inner[1] == inner[2]:
+                    new_branch = branch + [([], "false")]
+                    new_tableau = tableau[:b_idx] + [new_branch] + tableau[b_idx+1:]
+                    return (new_tableau, qdepth)
+
+                    
+        # 8) Delta (existential)
         for f_idx, (free, form) in enumerate(branch):
             if is_existential(form):
                 term = new_sko_fun(free)
@@ -295,33 +292,83 @@ def expand(tableau: List[List[Notated]], qdepth: int) -> List[List[Notated]]:
         tableau, qdepth = step
 
 # --- 분기 닫힘 검사 closed -----------------------------------------------
-def closed(tableau):
-    for branch in tableau:
-        # 이미 false 가 있으면 패스
-        if any(fmla(nf) == 'false' for nf in branch):
-            continue
+def is_literal(form: Formula) -> bool:
+    """원자식 또는 그 부정인지 판별."""
+    if isinstance(form, Predicate):
+        return True                 # P(t)
+    if (isinstance(form, tuple) and
+        form[0] == Operation.NEG and
+        isinstance(form[1], Predicate)):
+        return True                 # ¬P(t)
+    return False
 
-        # 모든 리터럴 쌍을 골라내서…
-        atoms = [fmla(nf) for nf in branch if is_atomic(fmla(nf))]
-        # 예: atoms = [P(x), Q(y), R(z)]
-        # 이들 중에 P,Q,R 을 동시에 유일화해서 모순이 있는지 테스트
-        try:
-            env = []  # 빈 환경에서 출발
-            # 만약 종단 조건이 'X' 와 'neg X' 가 동시에 있는지를
-            # 다중 유일화로 검사한다면, 아래처럼:
-            for X, Y in itertools.product(atoms, repeat=2):
-                if isinstance(Y, tuple) and Y[0]=='neg':
-                    env = unify_list([X], [Y[1]], env)
-                    # 혹은 여러 쌍을 한 번에 넘겨도 되고…
-            # 여기까지 에러 없이 왔으면 모순이므로 닫힌(branch closed)
-            continue
-        except ValueError:
-            # 유일화 실패 → 이 브랜치는 안 닫혔음
-            return False
+
+def negate_literal(lit: Formula) -> Formula:
+    """리터럴 lit의 논리적 부정을 돌려준다."""
+    if isinstance(lit, Predicate):                 # P(t) → ¬P(t)
+        return (Operation.NEG, lit)
+    if (isinstance(lit, tuple) and lit[0] == Operation.NEG):
+        return lit[1]                              # ¬P(t) → P(t)
+    raise ValueError("not a literal")
+
+
+def closed(tableau: List[List[Notated]]) -> bool:
+    """
+    tableau 가 완전히 닫혔으면 True.
+    - ‘false’ 가 있으면 바로 닫힘.
+    - 한 branch 안에 X, ¬X 가 유일화 가능한 형태로 함께 있으면 닫힘.
+    """
+    for branch in tableau:
+
+        # 1) false 리터럴 확인
+        if any(fmla is False for _, fmla in branch):
+            continue  # 이 branch 는 이미 닫힘
+
+        # 2) 리터럴만 추출
+        literals = [(free, f) for free, f in branch if is_literal(f)]
+        if not literals:
+            return False  # 리터럴이 전혀 없는데 false도 없으면 열려 있음
+
+        # 3) 각 리터럴에 대해 부정형 존재 + 유일화 검사
+        for free1, lit1 in literals:
+            neg_lit1 = negate_literal(lit1)
+
+            # neg_lit1 이 branch 에 존재하는지 확인
+            for free2, lit2 in literals:
+                if lit2 != neg_lit1:
+                    continue
+
+                # (a) 술어 이름, 인자 수가 일치하는지 (이미 lit2 == ¬lit1)
+                # (b) 두 리터럴의 대응 term 들이 유일화(resolve) 되는지 확인
+                if isinstance(lit1, Predicate) and isinstance(lit2, tuple):
+                    # lit2 = (NEG, Predicate(...))
+                    lit2_inner = lit2[1]
+                    try:
+                        _ = unify_list(lit1.args, lit2_inner.args, [])
+                        # 유일화 성공 → branch 닫힘
+                        break
+                    except ValueError:
+                        pass  # 이 리터럴 쌍은 충돌 못 함
+
+                elif (isinstance(lit1, tuple) and lit1[0] == Operation.NEG
+                      and isinstance(lit2, Predicate)):
+                    # lit1 = (NEG, Predicate(...)), lit2 = Predicate(...)
+                    lit1_inner = lit1[1]
+                    try:
+                        _ = unify_list(lit1_inner.args, lit2.args, [])
+                        break
+                    except ValueError:
+                        pass
+                else:
+                    # lit1 의 부정형과 유일화되는 것이 없음 → branch 열려
+                    return False
+
+    # 모든 branch 가 닫혔을 때
     return True
 
+
 # --- 테스트 인터페이스 -----------------------------------------------------
-def test(formula: Term, qdepth: int = 3):
+def prove(formula: Term, qdepth: int = 3):
     reset_sko()
     root = make_notated([], ("neg", formula))
     tree = expand([[root]], qdepth)
@@ -329,10 +376,56 @@ def test(formula: Term, qdepth: int = 3):
         print(f"Proof found at Q-depth {qdepth}")
     else:
         print(f"No proof at Q-depth {qdepth}")
+        
+# ─────────────────────────────────────────────────────────────
+# 전제(assumptions)를 포함한 초기 branch 생성
+# ─────────────────────────────────────────────────────────────
+def _build_initial_branch(premises: List[Formula],
+                          conclusion: Formula) -> List[Notated]:
+    """
+    S ⊢ X 를 tableau 로 증명하기 위한 branch:
+      - 모든 전제 S 를 '참'으로,    (positive node)
+      - 결론 X  는 '부정'으로 삽입. (¬X)
+    """
+    branch: List[Notated] = []
+
+    # 1) 전제들을 먼저 positive 로 추가
+    for prem in premises:
+        branch.append(make_notated([], prem))
+
+    # 2) 부정 결론 ¬X 추가
+    branch.append(make_notated([], (Operation.NEG, conclusion)))
+
+    return branch
+
+
+# ─────────────────────────────────────────────────────────────
+#  S ⊢ X  판단 함수 (premises + conclusion)
+# ─────────────────────────────────────────────────────────────
+        
+def prove_with_premises(premises: List[Formula],
+                        conclusion: Formula,
+                        qdepth: int = 3) -> bool:
+    """
+    premises  (S) 가 주어졌을 때,
+    결론 conclusion (X)이  Tableau 상에서 따르는지(S ⊢ X) 확인.
+    반환값: True  → 증명 성공 (Theorem under premises)
+            False → 깊이 qdepth 까지는 실패 (불완전할 수 있음)
+    """
+    reset_sko()                             # Skolem 인덱스 초기화
+    root_branch = _build_initial_branch(premises, conclusion)
+    tableau = expand([root_branch], qdepth) # 기존 expand 사용
+
+    if closed(tableau):
+        print(f"⊢  증명 성공   (Q-depth={qdepth})")
+        return True
+    else:
+        print(f"⊢  증명 실패   (Q-depth={qdepth} 까지)")
+        return False
 
 # --- 사용 예제 ------------------------------------------------------------
 if __name__ == "__main__":
     # 예제: x = y, P(x) ⊢ P(y) 증명
     conj = ("and", ("=", "x", "y"), ("P", "x"))
     entail = ("imp", conj, ("P", "y"))
-    test(entail, qdepth=2)
+    prove(entail, qdepth=2)
