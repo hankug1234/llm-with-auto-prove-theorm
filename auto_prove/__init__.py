@@ -26,6 +26,8 @@ class Fun:
             and len(self.args) == len(other.args)
             and all(a == b for a, b in zip(self.args, other.args))
         )
+    def __hash__(self):
+        return hash("@".join( [self.name] + [str(arg) for arg in self.args]))
         
 class Predicate:
     def __init__(self, name: str, args: List['Term']):
@@ -40,6 +42,8 @@ class Predicate:
             and len(self.args) == len(other.args)
             and all(a == b for a, b in zip(self.args, other.args))
         )
+    def __hash__(self):
+        return hash("@".join( [self.name] + [str(arg) for arg in self.args]))
         
 class Constance:
     def __init__(self, const: str):
@@ -48,6 +52,8 @@ class Constance:
         return f"{self.const}"
     def __eq__(self, other):
         return isinstance(other, Constance) and self.const == other.const
+    def __hash__(self):
+        return hash(self.const)
 
 
 class Operation(Enum):
@@ -79,10 +85,10 @@ class Operation(Enum):
 # --- 용어 정의 ------------------------------------------------------------
 # Term: 원자 기호나 함수 응용, 혹은 문자열(변수/상수)
 Term = Union[Var, Fun, Constance]
+Atom = Union[bool,Predicate]
 Env = List[Tuple[Var, Term]]
 Formula = Union[
-    bool,
-    Predicate,
+    Atom,
     Term,
     Tuple[Operation, 'Formula'],                # 단항
     Tuple[Operation, 'Formula', 'Formula']      # 이항

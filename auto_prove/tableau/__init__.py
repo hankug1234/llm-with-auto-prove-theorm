@@ -1,7 +1,7 @@
 from typing import List, Tuple,  Optional
 import itertools, sys 
 sys.path.append(".")
-from auto_prove import unify_list, Formula, Notated, Term, Fun, Var, Operation, Predicate
+from auto_prove import unify_list, Formula, Notated, Term, Fun, Var, Operation, Predicate, Constance
 
 
 # --- Skolem 함수 인덱스 관리 ---------------------------------------------
@@ -56,18 +56,19 @@ def substitute_in_formula(form: Formula, old: Term, new: Term) -> Formula:
 
 def is_unary_formula(form: Formula) -> bool:
     # double negation, neg true or neg false
-    op = form[0]
-    inner = form[1]
-    inner_op = inner[0]
-     
-    return (
-        isinstance(form, tuple) 
-        and op == Operation.NEG
-        and (
-            (isinstance(inner, tuple) and inner_op == Operation.NEG)
-            or isinstance(inner, bool)
-            )
-    )
+    if isinstance(form , tuple):
+        op = form[0]
+        inner = form[1]
+        
+        return (
+            isinstance(form, tuple) 
+            and op == Operation.NEG
+            and (
+                (isinstance(inner, tuple) and inner[0] == Operation.NEG)
+                or isinstance(inner, bool)
+                )
+        )
+    return False
 
 def is_conjunctive(form: Formula) -> bool:
     if isinstance(form, tuple):
@@ -120,51 +121,53 @@ def component(form: Formula) -> bool:
     raise ValueError(f"No unary component for {form}")
 
 def components(form: Formula) -> Tuple[Formula, Formula]:
-    op = form[0]
-    if op == Operation.AND:
-        return (form[1], form[2])
-    if op == Operation.OR:
-        return (form[1], form[2])
-    if op == Operation.IMPLIE:
-        return ((Operation.NEG, form[1]), form[2])
-    if op == Operation.REVERSED_IMPLIE:
-        return (form[1], (Operation.NEG, form[2]))
-    if op == Operation.NOR:
-        return ((Operation.NEG, form[1]), (Operation.NEG, form[2]))
-    if op == Operation.NAND:
-        return ((Operation.NEG, form[1]), (Operation.NEG, form[2]))
-    if op == Operation.NOT_IMPLIE:
-        return (form[1], (Operation.NEG, form[2]))
-    if op == Operation.NOT_REVERSED_IMPLIE:
-        return ((Operation.NEG, form[1]), form[2])
-    if op == Operation.NEG and isinstance(form[1], tuple):
-        return components(form[1])
+    if isinstance(form, tuple):
+        op = form[0]
+        if op == Operation.AND:
+            return (form[1], form[2])
+        if op == Operation.OR:
+            return (form[1], form[2])
+        if op == Operation.IMPLIE:
+            return ((Operation.NEG, form[1]), form[2])
+        if op == Operation.REVERSED_IMPLIE:
+            return (form[1], (Operation.NEG, form[2]))
+        if op == Operation.NOR:
+            return ((Operation.NEG, form[1]), (Operation.NEG, form[2]))
+        if op == Operation.NAND:
+            return ((Operation.NEG, form[1]), (Operation.NEG, form[2]))
+        if op == Operation.NOT_IMPLIE:
+            return (form[1], (Operation.NEG, form[2]))
+        if op == Operation.NOT_REVERSED_IMPLIE:
+            return ((Operation.NEG, form[1]), form[2])
+        if op == Operation.NEG and isinstance(form[1], tuple):
+            return components(form[1])
     raise ValueError(f"No components for {form}")
 
 def is_existential(form: Formula) -> bool:
-    op = form[0]
-    inner = form[1]
-    inner_op = inner[0]
-    return (isinstance(form, tuple) and op == Operation.SOME) \
-       or (isinstance(form, tuple) and op == Operation.NEG
-           and isinstance(inner, tuple) and inner_op == Operation.ALL)
+    if isinstance(form,tuple):
+        op = form[0]
+        inner = form[1]
+        return (isinstance(form, tuple) and op == Operation.SOME) \
+        or (isinstance(form, tuple) and op == Operation.NEG
+            and isinstance(inner, tuple) and inner[0] == Operation.ALL)
+    return False 
 
 def is_universal(form: Formula) -> bool:
-    op = form[0]
-    inner = form[1]
-    inner_op = inner[0]
-    return (isinstance(form, tuple) and op == Operation.ALL) \
-       or (isinstance(form, tuple) and op == Operation.NEG
-           and isinstance(op, tuple) and inner_op == Operation.SOME)
+    if isinstance(form,tuple):
+        op = form[0]
+        inner = form[1]
+        return (isinstance(form, tuple) and op == Operation.ALL) \
+        or (isinstance(form, tuple) and op == Operation.NEG
+            and isinstance(op, tuple) and inner[0] == Operation.SOME)
+    return False
 
-def instance(form: Formula, term: Term) -> Term:
+def instance(form: Formula, term: Term) -> Formula:
     op = form[0]
     inner = form[1]
-    inner_op = inner[0]
     if op in {Operation.SOME,Operation.ALL}:
         _, var, body = form
         return substitute_in_formula(body, var, term)
-    if op == Operation.NEG and isinstance(inner, tuple) and inner_op in {Operation.SOME,Operation.ALL}:
+    if op == Operation.NEG and isinstance(inner, tuple) and inner[0] in {Operation.SOME,Operation.ALL}:
         return (Operation.NEG, instance(inner, term))
     raise ValueError(f"No instance for {form}")
 
@@ -182,11 +185,12 @@ def singlestep(
     terms_in_branch = set()
 
     def _collect_terms(form: Formula):
-        """Atomic / equality 식에서 term 모으기 (도우미)"""
-        if isinstance(form, Predicate):
-            for a in form.args: terms_in_branch.add(a)
-        elif isinstance(form, tuple) and form[0] == "=" and len(form) == 3:
-            terms_in_branch.add(form[1]); terms_in_branch.add(form[2])
+        """등식(=)에 등장한 term만 모은다."""
+        if (isinstance(form, tuple)
+            and form[0] == Operation.EQUAL
+            and len(form) == 3):
+            terms_in_branch.add(form[1])
+            terms_in_branch.add(form[2])
 
     for b_idx, branch in enumerate(tableau):
         
@@ -231,7 +235,7 @@ def singlestep(
         existing_eqs = {frm for _, frm in branch if isinstance(frm, tuple) and frm[0] == Operation.EQUAL and len(frm) == 3}
 
         for t in terms_in_branch:
-            reflex = ("=", t, t)
+            reflex = (Operation.EQUAL, t, t)
             if reflex not in existing_eqs:                   # 아직 없다면 추가
                 new_branch = branch + [make_notated([], reflex)]
                 new_tableau = tableau[:b_idx] + [new_branch] + tableau[b_idx+1:]
@@ -268,8 +272,8 @@ def singlestep(
         for free, frm in branch:
             if isinstance(frm, tuple) and frm[0] == Operation.NEG:
                 inner = frm[1]
-                if isinstance(inner, tuple) and inner[0] == "=" and inner[1] == inner[2]:
-                    new_branch = branch + [([], "false")]
+                if isinstance(inner, tuple) and inner[0] == Operation.EQUAL and inner[1] == inner[2]:
+                    new_branch = branch + [([], False)]
                     new_tableau = tableau[:b_idx] + [new_branch] + tableau[b_idx+1:]
                     return (new_tableau, qdepth)
 
@@ -290,6 +294,7 @@ def expand(tableau: List[List[Notated]], qdepth: int) -> List[List[Notated]]:
         if not step:
             return tableau
         tableau, qdepth = step
+        
 
 # --- 분기 닫힘 검사 closed -----------------------------------------------
 def is_literal(form: Formula) -> bool:
@@ -425,7 +430,35 @@ def prove_with_premises(premises: List[Formula],
 
 # --- 사용 예제 ------------------------------------------------------------
 if __name__ == "__main__":
-    # 예제: x = y, P(x) ⊢ P(y) 증명
-    conj = ("and", ("=", "x", "y"), ("P", "x"))
-    entail = ("imp", conj, ("P", "y"))
-    prove(entail, qdepth=2)
+    prem1 = Predicate("P", [Constance("a")])
+    prem2 = (Operation.ALL, "x",
+            (Operation.IMPLIE,
+            Predicate("P", [Var("x")]),
+            Predicate("Q", [Var("x")])))
+
+    goal  = Predicate("Q", [Constance("a")])
+
+    prove_with_premises([prem1, prem2], goal, qdepth=2)
+    
+    # ─────────────────────────────────────────────
+    #  무한 등식-루프를 일으키는 간단한 예제
+    # ─────────────────────────────────────────────
+    #  전제 S
+    prem1 = Predicate("P", [Constance("a")])                          # ① P(a)
+    prem2 = (
+        Operation.ALL, "x",                                           # ② ∀x (P(x) → P(f(x)))
+        (Operation.IMPLIE,
+        Predicate("P", [Var("x")]),
+        Predicate("P", [Fun("f", [Var("x")])]))
+    )
+    prem3 = (Operation.EQUAL,                                         # ③ a = f(a)
+            Constance("a"),
+            Fun("f", [Constance("a")]))
+
+    S = [prem1, prem2, prem3]
+
+    #  결론을 아무거나 두면 되지만, 예컨대 Q(a) 를 증명하려고 한다고 하자
+    goal = Predicate("Q", [Constance("a")])
+
+    # 증명 시도
+    prove_with_premises(S, goal, qdepth=5)
