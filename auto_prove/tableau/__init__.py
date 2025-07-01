@@ -1,4 +1,4 @@
-from typing import List, Tuple,  Optional
+from typing import List, Tuple,  Optional, Dict, Set
 import itertools, sys 
 sys.path.append(".")
 from auto_prove import unify_list, Formula, Notated, Term, Fun, Var, Operation, Predicate, Constance
@@ -176,21 +176,34 @@ def is_atomic(form: Formula) -> bool:
         return True 
     return False
 
+_reflex_seen: Dict[int, Set[int]] = {}   # branch_id → {hash(term), ...}
+
+def _already_reflex(branch, term) -> bool:
+    """branch 에 대해 term 의 reflex 가 이미 삽입되었나?"""
+    bid = id(branch)
+    bucket = _reflex_seen.setdefault(bid, set())
+    h = hash(term)
+    if h in bucket:
+        return True          # 이미 있었음 → 삽입 스킵
+    bucket.add(h)            # 최초 발견 → 기록하고 False 반환
+    return False
+
+terms_in_branch = set()
+
+def _collect_terms(form: Formula):
+    """등식(=)에 등장한 term만 모은다."""
+    if (isinstance(form, tuple)
+        and form[0] == Operation.EQUAL
+        and len(form) == 3):
+        terms_in_branch.add(form[1])
+        terms_in_branch.add(form[2])
+
 # --- 단일 확장 단계 singlestep -------------------------------------------
 def singlestep(
     tableau: List[List[Notated]],
-    qdepth: int
-) -> Optional[Tuple[List[List[Notated]], int]]:
-    
-    terms_in_branch = set()
-
-    def _collect_terms(form: Formula):
-        """등식(=)에 등장한 term만 모은다."""
-        if (isinstance(form, tuple)
-            and form[0] == Operation.EQUAL
-            and len(form) == 3):
-            terms_in_branch.add(form[1])
-            terms_in_branch.add(form[2])
+    qdepth: int,
+    equality: int
+) -> Optional[Tuple[List[List[Notated]], int, int]]:
 
     for b_idx, branch in enumerate(tableau):
         
@@ -199,14 +212,14 @@ def singlestep(
             if is_unary_formula(form):
                 comp = component(form)
                 new_branch = branch[:f_idx] + [make_notated(free, comp)] + branch[f_idx+1:]
-                return (tableau[:b_idx] + [new_branch] + tableau[b_idx+1:], qdepth)
+                return (tableau[:b_idx] + [new_branch] + tableau[b_idx+1:], qdepth, equality)
             
         # 2) Alpha
         for f_idx, (free, form) in enumerate(branch):
             if is_conjunctive(form):
                 a1, a2 = components(form)
                 new_branch = branch[:f_idx] + [make_notated(free, a1), make_notated(free, a2)] + branch[f_idx+1:]
-                return (tableau[:b_idx] + [new_branch] + tableau[b_idx+1:], qdepth)
+                return (tableau[:b_idx] + [new_branch] + tableau[b_idx+1:], qdepth, equality)
             
         # 3) Beta
         for f_idx, (free, form) in enumerate(branch):
@@ -215,7 +228,7 @@ def singlestep(
                 br1 = branch[:f_idx] + [make_notated(free, b1)] + branch[f_idx+1:]
                 br2 = branch[:f_idx] + [make_notated(free, b2)] + branch[f_idx+1:]
                 new_tb = tableau[:b_idx] + [br1, br2] + tableau[b_idx+1:]
-                return (new_tb, qdepth)
+                return (new_tb, qdepth, equality)
             
         # 4) Gamma (universal)
         for f_idx, (free, form) in enumerate(branch):
@@ -225,8 +238,8 @@ def singlestep(
                 inst_notated = make_notated(free, inst)
                 original_notated = make_notated([v] + free, form)
                 new_branch = [inst_notated] + branch[:f_idx] + branch[f_idx+1:] + [original_notated]
-                new_tableau = tableau[:b_idx] + [new_branch] + tableau[b_idx+1:]
-                return (new_tableau, qdepth - 1)
+                new_tableau = tableau[:b_idx] + tableau[b_idx+1:] + [new_branch]
+                return (new_tableau, qdepth - 1, equality)
             
         # 5) Equality reflexivity EXPANSION  (t = t 삽입)
         for _, formula in branch:
@@ -236,10 +249,14 @@ def singlestep(
 
         for t in terms_in_branch:
             reflex = (Operation.EQUAL, t, t)
+            
+            if reflex in existing_eqs or _already_reflex(branch, t):
+                continue  
+            
             if reflex not in existing_eqs:                   # 아직 없다면 추가
                 new_branch = branch + [make_notated([], reflex)]
                 new_tableau = tableau[:b_idx] + [new_branch] + tableau[b_idx+1:]
-                return (new_tableau, qdepth)
+                return (new_tableau, qdepth, equality)
             
         # 6) Equality SUBSTITUTIVITY (원자식 치환)  <— 기존 규칙 보강
         eqs = [
@@ -256,17 +273,17 @@ def singlestep(
 
                     # --- t1 ↦ t2 치환 ---
                     new_f = substitute_in_formula(frm, t1, t2)
-                    if new_f != frm and new_f not in existing_forms:
+                    if equality > 0 and new_f != frm and new_f not in existing_forms:
                         new_branch = branch + [make_notated(free, new_f)]
-                        new_tableau = tableau[:b_idx] + [new_branch] + tableau[b_idx+1:]
-                        return (new_tableau, qdepth)
+                        new_tableau = tableau[:b_idx] + tableau[b_idx+1:] + [new_branch]
+                        return (new_tableau, qdepth, equality - 1)
 
                     # --- t2 ↦ t1 치환 (대칭) ---
                     new_f = substitute_in_formula(frm, t2, t1)
-                    if new_f != frm and new_f not in existing_forms:
+                    if equality > 0 and new_f != frm and new_f not in existing_forms:
                         new_branch = branch + [make_notated(free, new_f)]
-                        new_tableau = tableau[:b_idx] + [new_branch] + tableau[b_idx+1:]
-                        return (new_tableau, qdepth)
+                        new_tableau = tableau[:b_idx] + tableau[b_idx+1:] + [new_branch]
+                        return (new_tableau, qdepth, equality - 1)
 
         # 7) Equality reflexivity CLOSURE   ( ¬(t = t) → false )
         for free, frm in branch:
@@ -275,7 +292,7 @@ def singlestep(
                 if isinstance(inner, tuple) and inner[0] == Operation.EQUAL and inner[1] == inner[2]:
                     new_branch = branch + [([], False)]
                     new_tableau = tableau[:b_idx] + [new_branch] + tableau[b_idx+1:]
-                    return (new_tableau, qdepth)
+                    return (new_tableau, qdepth, equality)
 
                     
         # 8) Delta (existential)
@@ -284,16 +301,16 @@ def singlestep(
                 term = new_sko_fun(free)
                 inst = instance(form, term)
                 new_branch = branch[:f_idx] + [make_notated(free, inst)] + branch[f_idx+1:]
-                return (tableau[:b_idx] + [new_branch] + tableau[b_idx+1:], qdepth)
+                return (tableau[:b_idx] + [new_branch] + tableau[b_idx+1:], qdepth, equality)
     return None
 
 # --- 전체 확장 expand -----------------------------------------------------
-def expand(tableau: List[List[Notated]], qdepth: int) -> List[List[Notated]]:
+def expand(tableau: List[List[Notated]], qdepth: int, equality: int) -> List[List[Notated]]:
     while True:
-        step = singlestep(tableau, qdepth)
+        step = singlestep(tableau, qdepth, equality)
         if not step:
             return tableau
-        tableau, qdepth = step
+        tableau, qdepth, equality = step
         
 
 # --- 분기 닫힘 검사 closed -----------------------------------------------
@@ -373,10 +390,10 @@ def closed(tableau: List[List[Notated]]) -> bool:
 
 
 # --- 테스트 인터페이스 -----------------------------------------------------
-def prove(formula: Term, qdepth: int = 3):
+def prove(formula: Term, qdepth: int = 3, equality : int = 6):
     reset_sko()
-    root = make_notated([], ("neg", formula))
-    tree = expand([[root]], qdepth)
+    root = make_notated([], (Operation.NEG, formula))
+    tree = expand([[root]], qdepth, equality)
     if closed(tree):
         print(f"Proof found at Q-depth {qdepth}")
     else:
@@ -408,9 +425,10 @@ def _build_initial_branch(premises: List[Formula],
 #  S ⊢ X  판단 함수 (premises + conclusion)
 # ─────────────────────────────────────────────────────────────
         
-def prove_with_premises(premises: List[Formula],
+def prove_with_premises(premises: List[Formula], 
                         conclusion: Formula,
-                        qdepth: int = 3) -> bool:
+                        qdepth: int = 3,
+                        equality: int = 6) -> bool:
     """
     premises  (S) 가 주어졌을 때,
     결론 conclusion (X)이  Tableau 상에서 따르는지(S ⊢ X) 확인.
@@ -419,7 +437,7 @@ def prove_with_premises(premises: List[Formula],
     """
     reset_sko()                             # Skolem 인덱스 초기화
     root_branch = _build_initial_branch(premises, conclusion)
-    tableau = expand([root_branch], qdepth) # 기존 expand 사용
+    tableau = expand([root_branch], qdepth, equality) # 기존 expand 사용
 
     if closed(tableau):
         print(f"⊢  증명 성공   (Q-depth={qdepth})")
