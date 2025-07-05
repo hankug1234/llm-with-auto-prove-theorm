@@ -82,43 +82,42 @@ def is_unary_formula(form: Formula) -> bool:
     return False
 
 def is_conjunctive(form: Formula) -> bool:
-    if isinstance(form, tuple):
-        op = form[0]
-        
-        if op == Operation.AND:
+    if not isinstance(form, tuple):
+        return False
+
+    op = form[0]
+
+    # 직접 α
+    if op in {Operation.AND, Operation.NOR}:
+        return True
+
+    # 부정 α :  ¬(β형)
+    if op == Operation.NEG and isinstance(form[1], tuple):
+        inner_op = form[1][0]
+        if inner_op in {Operation.OR,
+                        Operation.IMPLIE,
+                        Operation.REVERSED_IMPLIE}:
             return True
-        
-        if op == Operation.NEG and isinstance(form[1], tuple):
-            inner = form[1]
-            inner_op = inner[0]
-            
-            if inner_op in {
-                Operation.OR,
-                Operation.IMPLIE,
-                Operation.REVERSED_IMPLIE,
-                Operation.NOR
-            }:
-                return True
     return False
 
-def is_disjunctive(form: Term) -> bool:
-    if isinstance(form, tuple):
-        op = form[0]
 
-        if op == Operation.OR:
+# β-공식 : 두 개의 브랜치를 만들어 분기
+def is_disjunctive(form: Formula) -> bool:
+    if not isinstance(form, tuple):
+        return False
+
+    op = form[0]
+
+    # 직접 β
+    if op in {Operation.OR, Operation.NAND,
+              Operation.IMPLIE, Operation.REVERSED_IMPLIE}:
+        return True
+
+    # 부정 β :  ¬(α형)
+    if op == Operation.NEG and isinstance(form[1], tuple):
+        inner_op = form[1][0]
+        if inner_op in {Operation.AND}:
             return True
-
-        if op == Operation.NEG and isinstance(form[1], tuple):
-            inner = form[1]
-            inner_op = inner[0]
-            
-            if inner_op in {
-                Operation.AND, 
-                Operation.NAND, 
-                Operation.IMPLIE,
-                Operation.REVERSED_IMPLIE
-            }:
-                return True
     return False
 
 def component(form: Formula) -> bool:
@@ -164,12 +163,13 @@ def is_existential(form: Formula) -> bool:
     return False 
 
 def is_universal(form: Formula) -> bool:
-    if isinstance(form,tuple):
+    if isinstance(form, tuple):
         op = form[0]
         inner = form[1]
-        return (isinstance(form, tuple) and op == Operation.ALL) \
-        or (isinstance(form, tuple) and op == Operation.NEG
-            and isinstance(op, tuple) and inner[0] == Operation.SOME)
+        return (
+            op == Operation.ALL
+            or (op == Operation.NEG and isinstance(inner, tuple) and inner[0] == Operation.SOME)
+        )
     return False
 
 def instance(form: Formula, term: Term) -> Formula:
@@ -203,6 +203,7 @@ def _collect_terms(form: Formula):
         and form[0] == Operation.EQUAL
         and len(form) == 3):
         terms_in_branch.add(form[1])
+
         terms_in_branch.add(form[2])
 
 # --- 단일 확장 단계 singlestep -------------------------------------------
@@ -345,6 +346,7 @@ def branch_closed(branch: List[Notated]) -> bool:
     # 1) false 리터럴
     if any(formula(n) == False for n in branch):
         return True
+    
     literals = [n for n in branch if is_literal(formula(n))]
     if len(literals) == 0:
         return False
@@ -360,24 +362,24 @@ def branch_closed(branch: List[Notated]) -> bool:
 
             # (a) 술어 이름, 인자 수가 일치하는지 (이미 lit2 == ¬lit1)
             # (b) 두 리터럴의 대응 term 들이 유일화(resolve) 되는지 확인
-            if isinstance(lit1, Terminology) and isinstance(lit2, tuple):
-                # lit2 = (NEG, Terminology(...))
-                lit2_inner = lit2[1]
-                try:
-                    _ = unify_list(lit1.args, lit2_inner.args, [])
-                    return True
-                except ValueError:
-                    pass  # 이 리터럴 쌍은 충돌 못 함
-
-            elif (isinstance(lit1, tuple) and lit1[0] == Operation.NEG
-                    and isinstance(lit2, Terminology)):
-                # lit1 = (NEG, Terminology(...)), lit2 = Terminology(...)
-                lit1_inner = lit1[1]
-                try:
-                    _ = unify_list(lit1_inner.args, lit2.args, [])
-                    return True
-                except ValueError:
-                    pass
+            try:
+                
+                if (isinstance(lit2, tuple) and lit2[0] == Operation.NEG
+                        and isinstance(lit1, Terminology)):
+                    lit2_inner = lit2[1]
+                    if lit1.name == lit2_inner.name:
+                        _ = unify_list(lit1.args, lit2_inner.args, [])
+                        return True
+                     
+                elif (isinstance(lit1, tuple) and lit1[0] == Operation.NEG
+                        and isinstance(lit2, Terminology)):
+                    lit1_inner = lit1[1]
+                    if lit2.name == lit1_inner.name:
+                        _ = unify_list(lit1_inner.args, lit2.args, [])
+                        return True
+                    
+            except ValueError:
+                pass
 
     # 여기까지 왔으면 모순 쌍 없음 → 열린 브랜치
     return False
@@ -429,7 +431,7 @@ def _build_initial_branch(premises: List[Formula],
 def prove_with_premises(premises: List[Formula], 
                         conclusion: Formula,
                         qdepth: int = 3,
-                        equality: int = 6) -> bool:
+                        equality: int = 6) -> Tuple[bool, List[List[Notated]]]:
     """
     premises  (S) 가 주어졌을 때,
     결론 conclusion (X)이  Tableau 상에서 따르는지(S ⊢ X) 확인.
@@ -441,137 +443,10 @@ def prove_with_premises(premises: List[Formula],
     reset_terms_in_branch()
     root_branch = _build_initial_branch(premises, conclusion)
     tableau = expand([root_branch], qdepth, equality) # 기존 expand 사용
-
+ 
     if closed(tableau):
         print(f"⊢  증명 성공   (Q-depth={qdepth})")
-        return True
+        return (True, tableau)
     else:
         print(f"⊢  증명 실패   (Q-depth={qdepth} 까지)")
-        return False
-
-# --- 사용 예제 ------------------------------------------------------------
-if __name__ == "__main__":
-    prem1 = Terminology("P", [Constance("a")])
-    prem2 = (Operation.ALL, "x",
-            (Operation.IMPLIE,
-            Terminology("P", [Var("x")]),
-            Terminology("Q", [Var("x")])))
-
-    goal  = Terminology("Q", [Constance("a")])
-
-    prove_with_premises([prem1, prem2], goal, qdepth=2)
-    
-    # ─────────────────────────────────────────────
-    #  무한 등식-루프를 일으키는 간단한 예제
-    # ─────────────────────────────────────────────
-    #  전제 S
-    prem1 = Terminology("P", [Constance("a")])                          # ① P(a)
-    prem2 = (
-        Operation.ALL, "x",                                           # ② ∀x (P(x) → P(f(x)))
-        (Operation.IMPLIE,
-        Terminology("P", [Var("x")]),
-        Terminology("P", [Fun("f", [Var("x")])]))
-    )
-    prem3 = (Operation.EQUAL,                                         # ③ a = f(a)
-            Constance("a"),
-            Fun("f", [Constance("a")]))
-
-    S = [prem1, prem2, prem3]
-
-    #  결론을 아무거나 두면 되지만, 예컨대 Q(a) 를 증명하려고 한다고 하자
-    goal = Terminology("Q", [Constance("a")])
-
-    # 증명 시도
-    prove_with_premises(S, goal, qdepth=5)
-    
-    print("-------- 2 / 6 / 7 -------------- 증명 실패 여야 함")
-    
-    # ----------------------------------------------
-    # 1. 기본 유효   P(a),  ∀x( P(x) → Q(x) ) ⊢ Q(a)
-    prem1 = Terminology("P", [Constance("a")])
-    prem2 = (Operation.ALL, "x",
-            (Operation.IMPLIE,
-            Terminology("P", [Var("x")]),
-            Terminology("Q", [Var("x")])))
-    goal  = Terminology("Q", [Constance("a")])
-    prove_with_premises(S, goal, qdepth=5)
-    # ----------------------------------------------
-    # 2. 동일 변수 반복 (무효)  ∀x P(x) ⊬ Q(a)
-    prem1 = (Operation.ALL, "x", Terminology("P", [Var("x")]))
-    goal  = Terminology("Q", [Constance("a")])    # entailment가 안 됨
-    prove_with_premises(S, goal, qdepth=5)
-    # ----------------------------------------------
-    # 3. ∧ 도입  P(a) ∧ R(a) ⊢ R(a)
-    prem1 = (Operation.AND,
-            Terminology("P", [Constance("a")]),
-            Terminology("R", [Constance("a")]))
-    goal  = Terminology("R", [Constance("a")])
-    prove_with_premises(S, goal, qdepth=5)
-    # ----------------------------------------------
-    # 4. ∃ 제거  ∃y (R(y) ∧ P(y)) , ∀x (R(x) → Q(x)) ⊢ ∃z Q(z)
-    prem1 = (Operation.SOME, "y",
-            (Operation.AND,
-            Terminology("R", [Var("y")]),
-            Terminology("P", [Var("y")])))
-    prem2 = (Operation.ALL, "x",
-            (Operation.IMPLIE,
-            Terminology("R", [Var("x")]),
-            Terminology("Q", [Var("x")])))
-    goal  = (Operation.SOME, "z", Terminology("Q", [Var("z")]))
-    prove_with_premises(S, goal, qdepth=5)
-    # ----------------------------------------------
-    # 5. double-negation  ¬¬P(b) ⊢ P(b)
-    prem1 = ("neg", ("neg", Terminology("P", [Constance("b")])))
-    goal  = Terminology("P", [Constance("b")])
-    prove_with_premises(S, goal, qdepth=5)
-    # ----------------------------------------------
-    # 6. De Morgan (무효)  ¬(P(a) ∧ Q(a)) ⊢ ¬P(a) ∨ ¬Q(a)   # 타블로가 닫히지 않음
-    prem1 = ("neg",
-            (Operation.AND,
-            Terminology("P", [Constance("a")]),
-            Terminology("Q", [Constance("a")])))
-    goal  = (Operation.OR,
-            ("neg", Terminology("P", [Constance("a")])),
-            ("neg", Terminology("Q", [Constance("a")])))
-    prove_with_premises(S, goal, qdepth=5)
-    # ----------------------------------------------
-    # 7. 조건부의 역 (무효)  P(a) → Q(a)  ⊬ Q(a) → P(a)
-    prem1 = (Operation.IMPLIE,
-            Terminology("P", [Constance("a")]),
-            Terminology("Q", [Constance("a")]))
-    goal  = (Operation.IMPLIE,
-            Terminology("Q", [Constance("a")]),
-            Terminology("P", [Constance("a")]))
-    prove_with_premises(S, goal, qdepth=5)
-    # ----------------------------------------------
-    # 8. ∀/∃ 혼합   ∀x (P(x) → ∃y R(x,y)) , P(c) ⊢ ∃y R(c,y)
-    prem1 = (Operation.ALL, "x",
-            (Operation.IMPLIE,
-            Terminology("P", [Var("x")]),
-            (Operation.SOME, "y", Terminology("R", [Var("x"), Var("y")]))))
-    prem2 = Terminology("P", [Constance("c")])
-    goal  = (Operation.SOME, "y", Terminology("R", [Constance("c"), Var("y")]))
-    prove_with_premises(S, goal, qdepth=5)
-    # ----------------------------------------------
-    prem1 = (Operation.ALL, "x",
-            (Operation.IMPLIE,
-            Terminology("P", [Var("x")]),
-            (Operation.SOME, "y", Terminology("R", [Var("x"), Var("y")]))))
-    prem2 = (Operation.ALL, "x",
-            (Operation.IMPLIE,
-            Terminology("P", [Var("x")]),
-            (Operation.SOME, "y", Terminology("R", [Var("x"), Var("y")]))))
-    print(Terminology("P", [Var("x")]) ==  Terminology("P", [Var("x")]))
-    print(Var("x") == Var("x"))               # True ?
-    print(Constance("a") == Constance("a"))   # True ?
-    print(Fun("f", [Var("x")]) == Fun("f", [Var("x")]))
-    
-    print("__________________________________________")
-    
-    t1 = Terminology("P", [Var("x")])
-    t2 = Terminology("P", [Var("x")])
-
-    print("t1:", t1)
-    print("t2:", t2)
-    print("args equal?:", [a == b for a, b in zip(t1.args, t2.args)])
-    print("Terminology equal?:", t1 == t2)
+        return (False, tableau)
