@@ -1,11 +1,13 @@
 from typing import List, Tuple,  Optional, Dict, Set
 import itertools, sys 
 sys.path.append(".")
-from auto_prove import unify_list, Formula, Notated, Term, Fun, Var, Operation, Predicate, Constance
+from auto_prove import unify_list, Formula, Notated, Term, Fun, Var, Operation, Terminology, Constance, Atom
 
 
 # --- Skolem 함수 인덱스 관리 ---------------------------------------------
 _sko_counter = itertools.count(1)
+_reflex_seen: Dict[int, Set[int]] = {}   # branch_id → {hash(term), ...}
+terms_in_branch = set()
 
 def new_sko_fun(free_vars: List[Var]) -> Fun:
     """새로운 Skolem 함수 f_i(free_vars...)를 생성."""
@@ -16,6 +18,15 @@ def reset_sko():
     """Skolem 함수 인덱스 리셋."""
     global _sko_counter
     _sko_counter = itertools.count(1)
+
+def reset_reflex_seen():
+    global _reflex_seen
+    _reflex_seen = {} 
+
+def reset_terms_in_branch():
+    global terms_in_branch
+    terms_in_branch = set()
+    
 
 # --- 노테이션 처리 --------------------------------------------------------
 def notation(notated: Notated) -> List[Var]:
@@ -36,8 +47,8 @@ def substitute_term(term: Term, old: Term, new: Term) -> Term:
     return term
 
 def substitute_in_formula(form: Formula, old: Term, new: Term) -> Formula:
-    if isinstance(form, Predicate):
-        return Predicate(form.name, [substitute_term(t, old, new) for t in form.args])
+    if isinstance(form, Terminology):
+        return Terminology(form.name, [substitute_term(t, old, new) for t in form.args])
 
     if isinstance(form,Term):
         return substitute_term(form, old, new)
@@ -172,11 +183,9 @@ def instance(form: Formula, term: Term) -> Formula:
     raise ValueError(f"No instance for {form}")
 
 def is_atomic(form: Formula) -> bool:
-    if isinstance(form, Predicate) or isinstance(form,bool):
+    if isinstance(form, Terminology) or isinstance(form,bool):
         return True 
     return False
-
-_reflex_seen: Dict[int, Set[int]] = {}   # branch_id → {hash(term), ...}
 
 def _already_reflex(branch, term) -> bool:
     """branch 에 대해 term 의 reflex 가 이미 삽입되었나?"""
@@ -187,8 +196,6 @@ def _already_reflex(branch, term) -> bool:
         return True          # 이미 있었음 → 삽입 스킵
     bucket.add(h)            # 최초 발견 → 기록하고 False 반환
     return False
-
-terms_in_branch = set()
 
 def _collect_terms(form: Formula):
     """등식(=)에 등장한 term만 모은다."""
@@ -316,82 +323,76 @@ def expand(tableau: List[List[Notated]], qdepth: int, equality: int) -> List[Lis
 # --- 분기 닫힘 검사 closed -----------------------------------------------
 def is_literal(form: Formula) -> bool:
     """원자식 또는 그 부정인지 판별."""
-    if isinstance(form, Predicate):
+    if isinstance(form, Terminology):
         return True                 # P(t)
     if (isinstance(form, tuple) and
         form[0] == Operation.NEG and
-        isinstance(form[1], Predicate)):
+        isinstance(form[1], Terminology)):
         return True                 # ¬P(t)
     return False
 
 
 def negate_literal(lit: Formula) -> Formula:
     """리터럴 lit의 논리적 부정을 돌려준다."""
-    if isinstance(lit, Predicate):                 # P(t) → ¬P(t)
+    if isinstance(lit, Terminology):                 # P(t) → ¬P(t)
         return (Operation.NEG, lit)
     if (isinstance(lit, tuple) and lit[0] == Operation.NEG):
         return lit[1]                              # ¬P(t) → P(t)
     raise ValueError("not a literal")
 
 
+def branch_closed(branch: List[Notated]) -> bool:
+    # 1) false 리터럴
+    if any(formula(n) == False for n in branch):
+        return True
+    literals = [n for n in branch if is_literal(formula(n))]
+    if len(literals) == 0:
+        return False
+
+    # 3) 각 리터럴에 대해 부정형 존재 + 유일화 검사
+    for free1, lit1 in literals:
+        neg_lit1 = negate_literal(lit1)
+
+        # neg_lit1 이 branch 에 존재하는지 확인
+        for free2, lit2 in literals:
+            if lit2 == neg_lit1:
+                return True
+
+            # (a) 술어 이름, 인자 수가 일치하는지 (이미 lit2 == ¬lit1)
+            # (b) 두 리터럴의 대응 term 들이 유일화(resolve) 되는지 확인
+            if isinstance(lit1, Terminology) and isinstance(lit2, tuple):
+                # lit2 = (NEG, Terminology(...))
+                lit2_inner = lit2[1]
+                try:
+                    _ = unify_list(lit1.args, lit2_inner.args, [])
+                    return True
+                except ValueError:
+                    pass  # 이 리터럴 쌍은 충돌 못 함
+
+            elif (isinstance(lit1, tuple) and lit1[0] == Operation.NEG
+                    and isinstance(lit2, Terminology)):
+                # lit1 = (NEG, Terminology(...)), lit2 = Terminology(...)
+                lit1_inner = lit1[1]
+                try:
+                    _ = unify_list(lit1_inner.args, lit2.args, [])
+                    return True
+                except ValueError:
+                    pass
+
+    # 여기까지 왔으면 모순 쌍 없음 → 열린 브랜치
+    return False
+
+
 def closed(tableau: List[List[Notated]]) -> bool:
-    """
-    tableau 가 완전히 닫혔으면 True.
-    - ‘false’ 가 있으면 바로 닫힘.
-    - 한 branch 안에 X, ¬X 가 유일화 가능한 형태로 함께 있으면 닫힘.
-    """
-    for branch in tableau:
-
-        # 1) false 리터럴 확인
-        if any(fmla is False for _, fmla in branch):
-            continue  # 이 branch 는 이미 닫힘
-
-        # 2) 리터럴만 추출
-        literals = [(free, f) for free, f in branch if is_literal(f)]
-        if not literals:
-            return False  # 리터럴이 전혀 없는데 false도 없으면 열려 있음
-
-        # 3) 각 리터럴에 대해 부정형 존재 + 유일화 검사
-        for free1, lit1 in literals:
-            neg_lit1 = negate_literal(lit1)
-
-            # neg_lit1 이 branch 에 존재하는지 확인
-            for free2, lit2 in literals:
-                if lit2 != neg_lit1:
-                    continue
-
-                # (a) 술어 이름, 인자 수가 일치하는지 (이미 lit2 == ¬lit1)
-                # (b) 두 리터럴의 대응 term 들이 유일화(resolve) 되는지 확인
-                if isinstance(lit1, Predicate) and isinstance(lit2, tuple):
-                    # lit2 = (NEG, Predicate(...))
-                    lit2_inner = lit2[1]
-                    try:
-                        _ = unify_list(lit1.args, lit2_inner.args, [])
-                        # 유일화 성공 → branch 닫힘
-                        break
-                    except ValueError:
-                        pass  # 이 리터럴 쌍은 충돌 못 함
-
-                elif (isinstance(lit1, tuple) and lit1[0] == Operation.NEG
-                      and isinstance(lit2, Predicate)):
-                    # lit1 = (NEG, Predicate(...)), lit2 = Predicate(...)
-                    lit1_inner = lit1[1]
-                    try:
-                        _ = unify_list(lit1_inner.args, lit2.args, [])
-                        break
-                    except ValueError:
-                        pass
-                else:
-                    # lit1 의 부정형과 유일화되는 것이 없음 → branch 열려
-                    return False
-
-    # 모든 branch 가 닫혔을 때
-    return True
+    """tableau 의 모든 branch 가 닫혔으면 True"""
+    return all(branch_closed(branch) for branch in tableau)
 
 
 # --- 테스트 인터페이스 -----------------------------------------------------
 def prove(formula: Term, qdepth: int = 3, equality : int = 6):
     reset_sko()
+    reset_reflex_seen()
+    reset_terms_in_branch()
     root = make_notated([], (Operation.NEG, formula))
     tree = expand([[root]], qdepth, equality)
     if closed(tree):
@@ -436,6 +437,8 @@ def prove_with_premises(premises: List[Formula],
             False → 깊이 qdepth 까지는 실패 (불완전할 수 있음)
     """
     reset_sko()                             # Skolem 인덱스 초기화
+    reset_reflex_seen()
+    reset_terms_in_branch()
     root_branch = _build_initial_branch(premises, conclusion)
     tableau = expand([root_branch], qdepth, equality) # 기존 expand 사용
 
@@ -448,13 +451,13 @@ def prove_with_premises(premises: List[Formula],
 
 # --- 사용 예제 ------------------------------------------------------------
 if __name__ == "__main__":
-    prem1 = Predicate("P", [Constance("a")])
+    prem1 = Terminology("P", [Constance("a")])
     prem2 = (Operation.ALL, "x",
             (Operation.IMPLIE,
-            Predicate("P", [Var("x")]),
-            Predicate("Q", [Var("x")])))
+            Terminology("P", [Var("x")]),
+            Terminology("Q", [Var("x")])))
 
-    goal  = Predicate("Q", [Constance("a")])
+    goal  = Terminology("Q", [Constance("a")])
 
     prove_with_premises([prem1, prem2], goal, qdepth=2)
     
@@ -462,12 +465,12 @@ if __name__ == "__main__":
     #  무한 등식-루프를 일으키는 간단한 예제
     # ─────────────────────────────────────────────
     #  전제 S
-    prem1 = Predicate("P", [Constance("a")])                          # ① P(a)
+    prem1 = Terminology("P", [Constance("a")])                          # ① P(a)
     prem2 = (
         Operation.ALL, "x",                                           # ② ∀x (P(x) → P(f(x)))
         (Operation.IMPLIE,
-        Predicate("P", [Var("x")]),
-        Predicate("P", [Fun("f", [Var("x")])]))
+        Terminology("P", [Var("x")]),
+        Terminology("P", [Fun("f", [Var("x")])]))
     )
     prem3 = (Operation.EQUAL,                                         # ③ a = f(a)
             Constance("a"),
@@ -476,7 +479,99 @@ if __name__ == "__main__":
     S = [prem1, prem2, prem3]
 
     #  결론을 아무거나 두면 되지만, 예컨대 Q(a) 를 증명하려고 한다고 하자
-    goal = Predicate("Q", [Constance("a")])
+    goal = Terminology("Q", [Constance("a")])
 
     # 증명 시도
     prove_with_premises(S, goal, qdepth=5)
+    
+    print("-------- 2 / 6 / 7 -------------- 증명 실패 여야 함")
+    
+    # ----------------------------------------------
+    # 1. 기본 유효   P(a),  ∀x( P(x) → Q(x) ) ⊢ Q(a)
+    prem1 = Terminology("P", [Constance("a")])
+    prem2 = (Operation.ALL, "x",
+            (Operation.IMPLIE,
+            Terminology("P", [Var("x")]),
+            Terminology("Q", [Var("x")])))
+    goal  = Terminology("Q", [Constance("a")])
+    prove_with_premises(S, goal, qdepth=5)
+    # ----------------------------------------------
+    # 2. 동일 변수 반복 (무효)  ∀x P(x) ⊬ Q(a)
+    prem1 = (Operation.ALL, "x", Terminology("P", [Var("x")]))
+    goal  = Terminology("Q", [Constance("a")])    # entailment가 안 됨
+    prove_with_premises(S, goal, qdepth=5)
+    # ----------------------------------------------
+    # 3. ∧ 도입  P(a) ∧ R(a) ⊢ R(a)
+    prem1 = (Operation.AND,
+            Terminology("P", [Constance("a")]),
+            Terminology("R", [Constance("a")]))
+    goal  = Terminology("R", [Constance("a")])
+    prove_with_premises(S, goal, qdepth=5)
+    # ----------------------------------------------
+    # 4. ∃ 제거  ∃y (R(y) ∧ P(y)) , ∀x (R(x) → Q(x)) ⊢ ∃z Q(z)
+    prem1 = (Operation.SOME, "y",
+            (Operation.AND,
+            Terminology("R", [Var("y")]),
+            Terminology("P", [Var("y")])))
+    prem2 = (Operation.ALL, "x",
+            (Operation.IMPLIE,
+            Terminology("R", [Var("x")]),
+            Terminology("Q", [Var("x")])))
+    goal  = (Operation.SOME, "z", Terminology("Q", [Var("z")]))
+    prove_with_premises(S, goal, qdepth=5)
+    # ----------------------------------------------
+    # 5. double-negation  ¬¬P(b) ⊢ P(b)
+    prem1 = ("neg", ("neg", Terminology("P", [Constance("b")])))
+    goal  = Terminology("P", [Constance("b")])
+    prove_with_premises(S, goal, qdepth=5)
+    # ----------------------------------------------
+    # 6. De Morgan (무효)  ¬(P(a) ∧ Q(a)) ⊢ ¬P(a) ∨ ¬Q(a)   # 타블로가 닫히지 않음
+    prem1 = ("neg",
+            (Operation.AND,
+            Terminology("P", [Constance("a")]),
+            Terminology("Q", [Constance("a")])))
+    goal  = (Operation.OR,
+            ("neg", Terminology("P", [Constance("a")])),
+            ("neg", Terminology("Q", [Constance("a")])))
+    prove_with_premises(S, goal, qdepth=5)
+    # ----------------------------------------------
+    # 7. 조건부의 역 (무효)  P(a) → Q(a)  ⊬ Q(a) → P(a)
+    prem1 = (Operation.IMPLIE,
+            Terminology("P", [Constance("a")]),
+            Terminology("Q", [Constance("a")]))
+    goal  = (Operation.IMPLIE,
+            Terminology("Q", [Constance("a")]),
+            Terminology("P", [Constance("a")]))
+    prove_with_premises(S, goal, qdepth=5)
+    # ----------------------------------------------
+    # 8. ∀/∃ 혼합   ∀x (P(x) → ∃y R(x,y)) , P(c) ⊢ ∃y R(c,y)
+    prem1 = (Operation.ALL, "x",
+            (Operation.IMPLIE,
+            Terminology("P", [Var("x")]),
+            (Operation.SOME, "y", Terminology("R", [Var("x"), Var("y")]))))
+    prem2 = Terminology("P", [Constance("c")])
+    goal  = (Operation.SOME, "y", Terminology("R", [Constance("c"), Var("y")]))
+    prove_with_premises(S, goal, qdepth=5)
+    # ----------------------------------------------
+    prem1 = (Operation.ALL, "x",
+            (Operation.IMPLIE,
+            Terminology("P", [Var("x")]),
+            (Operation.SOME, "y", Terminology("R", [Var("x"), Var("y")]))))
+    prem2 = (Operation.ALL, "x",
+            (Operation.IMPLIE,
+            Terminology("P", [Var("x")]),
+            (Operation.SOME, "y", Terminology("R", [Var("x"), Var("y")]))))
+    print(Terminology("P", [Var("x")]) ==  Terminology("P", [Var("x")]))
+    print(Var("x") == Var("x"))               # True ?
+    print(Constance("a") == Constance("a"))   # True ?
+    print(Fun("f", [Var("x")]) == Fun("f", [Var("x")]))
+    
+    print("__________________________________________")
+    
+    t1 = Terminology("P", [Var("x")])
+    t2 = Terminology("P", [Var("x")])
+
+    print("t1:", t1)
+    print("t2:", t2)
+    print("args equal?:", [a == b for a, b in zip(t1.args, t2.args)])
+    print("Terminology equal?:", t1 == t2)

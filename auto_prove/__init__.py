@@ -1,24 +1,28 @@
 import itertools
 from enum import Enum
-from typing import List, Union, Tuple, Any
+from typing import List, Union, Tuple
 
 # Represent variables and compound terms
 class Var:
     def __init__(self, name: str):
         self.name = name
     def __repr__(self):
-        return self.name
+        return "var" + self.name
+    def __str__(self):
+        return "var" + self.name
     def __eq__(self, other):
         return isinstance(other, Var) and self.name == other.name
     def __hash__(self):
-        return hash(self.name)
+        return hash("var "+ self.name)
 
 class Fun:
     def __init__(self, name: str, args: List['Term']):
         self.name = name
         self.args = args
     def __repr__(self):
-        return f"{self.name}({', '.join(map(str, self.args))})"
+        return f"function {self.name}({', '.join(map(str, self.args))})"
+    def __str__(self):
+        return f"function {self.name}({', '.join(map(str, self.args))})"
     def __eq__(self, other):
         return (
             isinstance(other, Fun)
@@ -27,34 +31,41 @@ class Fun:
             and all(a == b for a, b in zip(self.args, other.args))
         )
     def __hash__(self):
-        return hash("@".join( [self.name] + [str(arg) for arg in self.args]))
-        
-class Predicate:
-    def __init__(self, name: str, args: List['Term']):
-        self.name = name
-        self.args = args
-    def __repr__(self):
-        return f"{self.name}({', '.join(map(str, self.args))})"
-    def __eq__(self, other):
-        return (
-            isinstance(other, Predicate)
-            and self.name == other.name
-            and len(self.args) == len(other.args)
-            and all(a == b for a, b in zip(self.args, other.args))
-        )
-    def __hash__(self):
-        return hash("@".join( [self.name] + [str(arg) for arg in self.args]))
+        return hash("function" + "@".join( [self.name] + [str(arg) for arg in self.args]))
         
 class Constance:
     def __init__(self, const: str):
         self.const = const 
     def __repr__(self):
-        return f"{self.const}"
+        return f"constance {self.const}"
+    def __str__(self):
+        return f"constance {self.const}"
     def __eq__(self, other):
         return isinstance(other, Constance) and self.const == other.const
     def __hash__(self):
-        return hash(self.const)
+        return hash("constance " + self.const)
 
+class Terminology:
+    def __init__(self, name: str, args: List['Term']):
+        self.name = name
+        self.args = args
+    def __repr__(self):
+        return f"terminology {self.name}({', '.join(map(str, self.args))})"
+    def __str__(self):
+        return f"terminology {self.name}({', '.join(map(str, self.args))})"
+    def __eq__(self, other):
+        print(isinstance(other, Terminology))
+        print(self.name == other.name)
+        print(len(self.args) == len(other.args))
+        print(all(a == b for a, b in zip(self.args, other.args)))
+        return (
+            isinstance(other, Terminology)
+            and self.name == other.name
+            and len(self.args) == len(other.args)
+            and all(a == b for a, b in zip(self.args, other.args))
+        )
+    def __hash__(self):
+        return hash("terminology" + "@".join( [self.name] + [str(arg) for arg in self.args]))
 
 class Operation(Enum):
     NEG = "neg"
@@ -85,7 +96,7 @@ class Operation(Enum):
 # --- 용어 정의 ------------------------------------------------------------
 # Term: 원자 기호나 함수 응용, 혹은 문자열(변수/상수)
 Term = Union[Var, Fun, Constance]
-Atom = Union[bool,Predicate]
+Atom = Union[bool,Terminology]
 Env = List[Tuple[Var, Term]]
 Formula = Union[
     Atom,
@@ -149,7 +160,7 @@ class Exists(Node):
         self.var = var
         self.body = body
 
-class Predicate(Node):
+class Terminology(Node):
     def __init__(self, name, args):
         self.name = name
         self.args = args
@@ -184,7 +195,7 @@ def new_skolem_function(free_vars):
 def free_vars(node, bound=None):
     if bound is None:
         bound = set()
-    if isinstance(node, Predicate):
+    if isinstance(node, Terminology):
         return set(arg for arg in node.args if arg not in bound)
     elif isinstance(node, (And, Or, Implies)):
         return free_vars(node.left, bound) | free_vars(node.right, bound)
@@ -221,8 +232,8 @@ def skolemize(node, bound_vars=None):
 
 # 변수 치환
 def replace_var(node, var, term):
-    if isinstance(node, Predicate):
-        return Predicate(node.name, [term if arg == var else arg for arg in node.args])
+    if isinstance(node, Terminology):
+        return Terminology(node.name, [term if arg == var else arg for arg in node.args])
     elif isinstance(node, ForAll):
         if node.var == var:
             return node
@@ -244,7 +255,7 @@ def replace_var(node, var, term):
 
 # AST 출력
 def pretty_print(node):
-    if isinstance(node, Predicate):
+    if isinstance(node, Terminology):
         return f"{node.name}({', '.join(node.args)})"
     elif isinstance(node, ForAll):
         return f"∀{node.var}.({pretty_print(node.body)})"
@@ -263,7 +274,7 @@ def pretty_print(node):
 # 테스트 예시
 if __name__ == "__main__":
     # 예: ∃x ∀y P(x, y)  →  ∀y P(f1, y)
-    formula = Exists("x", ForAll("y", Predicate("P", ["x", "y"])))
+    formula = Exists("x", ForAll("y", Terminology("P", ["x", "y"])))
     print("원래 공식:")
     print(pretty_print(formula))
     skolemized = skolemize(formula)
