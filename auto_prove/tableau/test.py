@@ -75,7 +75,7 @@ if __name__ == "__main__":
     tableaus.append(prove_with_premises([prem1,prem2], goal, qdepth=5))
     # ----------------------------------------------
     # 5. double-negation  ¬¬P(b) ⊢ P(b)
-    prem1 = ("neg", ("neg", Terminology("P", [Constance("b")])))
+    prem1 = (Operation.NEG, (Operation.NEG, Terminology("P", [Constance("b")])))
     goal  = Terminology("P", [Constance("b")])
     tableaus.append(prove_with_premises([prem1], goal, qdepth=5))
     # ----------------------------------------------
@@ -108,15 +108,7 @@ if __name__ == "__main__":
     goal  = (Operation.SOME, "y", Terminology("R", [Constance("c"), Var("y")]))
     tableaus.append(prove_with_premises([prem1,prem2], goal, qdepth=5))
     # ----------------------------------------------
-    def _pritty(tableau):
-
-        for branch in tableau:
-            print(branch)
-            print()
-            print() 
     
- 
-    _pritty(tableaus[6])
     
     
     

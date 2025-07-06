@@ -120,14 +120,18 @@ def is_disjunctive(form: Formula) -> bool:
             return True
     return False
 
-def component(form: Formula) -> bool:
-    if form == (Operation.NEG,True):
+def component(form: Formula) -> Formula:
+    # 1) 단순 부정인 경우
+    if isinstance(form, tuple) and form[0] == Operation.NEG \
+       and isinstance(form[1], tuple) and form[1][0] == Operation.NEG:
+        return form[1][1]                 # 바로 안쪽 식 하나만 꺼내 줌
+
+    # 2) 논리 상수에 대한 부정은 별도 처리 (True/False를 상수 기호로 가정)
+    if form == (Operation.NEG, True):
         return False
-    if form == (Operation.NEG,False):
+    if form == (Operation.NEG, False):
         return True
-    if is_unary_formula(form):
-        inner_inner = form[1][1]
-        return inner_inner
+
     raise ValueError(f"No unary component for {form}")
 
 def components(form: Formula) -> Tuple[Formula, Formula]:
@@ -140,7 +144,7 @@ def components(form: Formula) -> Tuple[Formula, Formula]:
         if op == Operation.IMPLIE:
             return ((Operation.NEG, form[1]), form[2])
         if op == Operation.REVERSED_IMPLIE:
-            return (form[1], (Operation.NEG, form[2]))
+            return ((Operation.NEG, form[2]), form[1])
         if op == Operation.NOR:
             return ((Operation.NEG, form[1]), (Operation.NEG, form[2]))
         if op == Operation.NAND:
@@ -148,9 +152,25 @@ def components(form: Formula) -> Tuple[Formula, Formula]:
         if op == Operation.NOT_IMPLIE:
             return (form[1], (Operation.NEG, form[2]))
         if op == Operation.NOT_REVERSED_IMPLIE:
-            return ((Operation.NEG, form[1]), form[2])
+            return (form[2],(Operation.NEG, form[1]))
         if op == Operation.NEG and isinstance(form[1], tuple):
-            return components(form[1])
+            inner = form[1]
+            in_op, a, b = inner[0], inner[1], inner[2]
+
+            match in_op:
+                case Operation.AND   : return (Operation.NEG, a), (Operation.NEG, b)
+                case Operation.OR    : return (Operation.NEG, a), (Operation.NEG, b)
+                case Operation.IMPLIE: return a,                (Operation.NEG, b)
+                case Operation.REVERSED_IMPLIE: return b,       (Operation.NEG, a)
+                case Operation.NOR   : return a, b
+                case Operation.NAND  : return a, b
+                case Operation.NOT_IMPLIE:
+                    # ¬¬(A→B)  →  A→B  →  (¬A , B)
+                    return (Operation.NEG, a), b
+                case Operation.NOT_REVERSED_IMPLIE:
+                    # ¬¬(A←B)  →  A←B  →  (¬B , A)
+                    return (Operation.NEG, b), a
+                
     raise ValueError(f"No components for {form}")
 
 def is_existential(form: Formula) -> bool:
