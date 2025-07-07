@@ -1,12 +1,14 @@
+import uuid
 from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_ollama import OllamaEmbeddings
 from langgraph.store.memory import InMemoryStore
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, AnyMessage, RemoveMessage
 from pydantic import BaseModel, Field
-from typing import Annotated, TypedDict, Union
+from typing import Annotated, TypedDict, Union, Any, Callable, List
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
+from langgraph.store.base import BaseStore, SearchItem
 
 
 
@@ -28,20 +30,19 @@ class State(TypedDict):
 
 class ATPagent:
     def __init__(self,
-                 data_path = "",
-                 user_id = "admin",
-                 information = "",
-                 system_prompt="""
+                 user_id : str = "admin",
+                 system_prompt : str ="""
                  when you use tool you must use this format [{"function": {"name": "function_name", "arguments": { "arg1": "value1", "arg2": "value2" }}},...]
                  you must have check that your answer is collect or not
                  think step by step 
-                 """,tools=[] ,chat_model = None, embeddings=None):
+                 """
+                 ,tools : List[Callable] =[] 
+                 ,chat_model: str = None
+                 ,embeddings=None
+                 ,fields: List[str] = []):
         
         self.tools = tools 
         self.system_prompt = system_prompt
-        self.tools_manager = None
-        self.information = information
-        self.data_path = data_path
         self.user_id = user_id
         
         if embeddings is None:
@@ -56,7 +57,7 @@ class ATPagent:
         self.memory = InMemoryStore(index={
         "embed": self.embeddings,
         "dims": 4096,
-        "fields":["keyword"]
+        "fields":fields
         })
         
         self.checkpointer = MemorySaver()
@@ -65,6 +66,39 @@ class ATPagent:
         
     def __call__(self,config):
         self.agent_mode_updates(config)
+        
+    
+    def retrive(self, namespace: str ,query: str , limit: int, store:BaseStore)-> list[SearchItem]: 
+        return store.search((self.user_id, namespace), query=query, limit=limit)
+    
+    def save(self, namespace: str, value: dict[str, Any], store:BaseStore):
+        store.put((self.user_id,namespace),str(uuid.uuid4()),value)
+        
+    def agent_mode_updates(self,config):
+
+        for event in self.graph.stream({"manager_messages" : [
+                                                        SystemMessage("사용자가 입장 하였습니다. 방문 인사를 해주세요")] , "mode" : MODE.MANAGER},stream_mode="updates",config=config):
+            if "persona_manager" in event.keys():
+                print(self.ai_message_parse(event['persona_manager']['manager_messages'][-1]))
+                print("\n")
+        
+        is_runnig = True
+        while is_runnig:
+            user_answer = input("답변을 입력해 주세요 : ")
+            print("\n")
+            for event in self.graph.stream(Command(resume=user_answer), stream_mode="updates",config=config):
+                if "persona_manager" in event.keys():
+                    print(self.ai_message_parse(event['persona_manager']['manager_messages'][-1]))
+                    print("\n")
+                elif "persona" in event.keys():
+                    print(self.ai_message_parse(event['persona']['persona_messages'][-1]))
+                    print("\n")
+                elif "user" in event.keys():
+                    if event['user'] is None:
+                        is_runnig = False 
+                        break 
+                    
+        print("chatting end")
         
     def _build(self):
         self.graph_builder.add_node("init",self.init)
