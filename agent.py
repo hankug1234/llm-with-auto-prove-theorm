@@ -9,6 +9,7 @@ from typing import Annotated, TypedDict, Union, Any, Callable, List
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.store.base import BaseStore, SearchItem
+from langgraph.types import Command, interrupt
 
 
 
@@ -64,20 +65,23 @@ class ATPagent:
         self.graph_builder = StateGraph(state_schema=State)
         self.graph = self._build()
         
-    def __call__(self,config):
-        self.agent_mode_updates(config)
+    def __call__(self, thread_id : str = "1"):
+        self._start_agent(config = {
+            "configurable" : {
+                "thread_id": thread_id
+            }
+        })
         
     
-    def retrive(self, namespace: str ,query: str , limit: int, store:BaseStore)-> list[SearchItem]: 
+    def _retrive(self, namespace: str ,query: str , limit: int, store:BaseStore)-> list[SearchItem]: 
         return store.search((self.user_id, namespace), query=query, limit=limit)
     
-    def save(self, namespace: str, value: dict[str, Any], store:BaseStore):
+    def _save(self, namespace: str, value: dict[str, Any], store:BaseStore):
         store.put((self.user_id,namespace),str(uuid.uuid4()),value)
         
-    def agent_mode_updates(self,config):
+    def _start_agent(self,config):
 
-        for event in self.graph.stream({"manager_messages" : [
-                                                        SystemMessage("사용자가 입장 하였습니다. 방문 인사를 해주세요")] , "mode" : MODE.MANAGER},stream_mode="updates",config=config):
+        for event in self.graph.stream(,stream_mode="updates",config=config):
             if "persona_manager" in event.keys():
                 print(self.ai_message_parse(event['persona_manager']['manager_messages'][-1]))
                 print("\n")
