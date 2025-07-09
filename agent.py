@@ -5,14 +5,14 @@ from langchain_ollama import OllamaEmbeddings
 from langgraph.store.memory import InMemoryStore
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, AnyMessage, RemoveMessage
 from pydantic import BaseModel, Field
-from typing import Annotated, TypedDict, Union, Any, Callable, List, Dict
+from typing import Annotated, TypedDict, Union, Any, Callable, List, Dict, Tuple
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.store.base import BaseStore, SearchItem
 from langgraph.types import Command, interrupt
 from toolkits import Tools
 from auto_prove.tableau import prove_with_premises
-from auto_prove import Formula
+from auto_prove import Formula, Notated
 
 
 def add(a: List[Any], b: List[Any]):
@@ -42,6 +42,7 @@ class State(TypedDict):
 class ATPagent:
     def __init__(self,
                  user_id : str = "admin",
+                 end_signal : str = "kill_9",
                  system_prompt : str =""
                  ,tools : List[Callable] =[] 
                  ,chat_model: str = None
@@ -52,7 +53,7 @@ class ATPagent:
             self.tools = Tools(tools)
         else:
             self.tools = None 
-            
+        self.end_signal = end_signal
         self.system_prompt = system_prompt + """
                  you must have check that your answer is collect or not
                  think step by step 
@@ -93,9 +94,12 @@ class ATPagent:
     def _save(self, namespace: str, value: dict[str, Any], store:BaseStore):
         store.put((self.user_id,namespace),str(uuid.uuid4()),value)
         
-    def _formal_language_converter(formal_language_sentance : str) -> Formula:
+    def _formal_language_converter(self,formal_language_sentance : str) -> Formula:
         pass
-        
+    
+    def _analisys_terminologys(self, branches: List[List[Notated]]) -> Tuple[bool,List[str]]:
+        pass
+    
     async def async_excute(self, query :Dict[str,Any], thread_id: str = "1"):
         config = {
             "configurable" : {
@@ -114,11 +118,17 @@ class ATPagent:
         }
 
         for event in self.graph.stream(query, stream_mode="updates", config=config):
+            #interrupt_message = event['__interrupt__']
             yield event
             
     def _core_model(self,state:State):
+        
+        if isinstance(state["history"][-1],HumanMessage) and state["history"][-1].content == self.end_signal:
+            return Command(goto=END)
+        
         if self.chat_model is None:
             raise ChatModelNoneException
+        
         response = self.chat_model.invoke([state["history"][-1]]).result
         return {"history": [AIMessage(response)]}
     
@@ -126,17 +136,23 @@ class ATPagent:
         conclusion = self._formal_language_converter(state["history"][-1].content)
         result = prove_with_premises(premises=state["premises"], conclusion= conclusion)
         
-        if result[0]:
-            return {"history" : [state["history"][-1]]}
+        none_closed_branches = [branch for is_closed, branch in zip(result[2], result[1]) if is_closed is False]
+        analisys_result = self._analisys_terminologys(none_closed_branches)
         
-        return {"history" : [SystemMessage("llm answer is wrong think step by step again")]}
+        if result[0] or analisys_result[0]:
+            user_question = interrupt(state["history"][-1].content)
+            return {"history" : [HumanMessage(user_question)]}
+        
+        return {"history" : [SystemMessage("\n".join(analisys_result[1]))]}
         
     def _build(self):
         self.graph_builder.add_node("init",self._init_context)
         self.graph_builder.add_node("core_model",self._core_model)
-        
+        self.graph_builder.add_node("auto_prove",self._auto_prove)
         self.graph_builder.add_edge(START,"init")
         self.graph_builder.add_edge("init","core_model")
+        self.graph_builder.add_edge("core_model","auto_prove")
+        self.graph_builder.add_edge("core_model","auto_prove")
         self.graph_builder.add_edge("persona_manager","summarize")
         #self.graph_builder.add_conditional_edges("summarize",self.router,["persona","persona_manager","user","tools","audio",END])
         
