@@ -11,6 +11,13 @@ from langgraph.graph.message import add_messages
 from langgraph.store.base import BaseStore, SearchItem
 from langgraph.types import Command, interrupt
 from toolkits import Tools
+from auto_prove.tableau import prove_with_premises
+from auto_prove import Formula
+
+
+def add(a: List[Any], b: List[Any]):
+    return a + b
+    
 
 class ChatModelNoneException(Exception):
     def __init__(self,message="chat model is None"):
@@ -29,6 +36,7 @@ class Response(BaseModel):
     
 class State(TypedDict):
     history: Annotated[list[AnyMessage], add_messages]
+    premises: Annotated[list[Formula], add]
   
 
 class ATPagent:
@@ -85,7 +93,10 @@ class ATPagent:
     def _save(self, namespace: str, value: dict[str, Any], store:BaseStore):
         store.put((self.user_id,namespace),str(uuid.uuid4()),value)
         
-    async def async_excute(self, query :Dict[str,AnyMessage], thread_id: str = "1"):
+    def _formal_language_converter(formal_language_sentance : str) -> Formula:
+        pass
+        
+    async def async_excute(self, query :Dict[str,Any], thread_id: str = "1"):
         config = {
             "configurable" : {
                 "thread_id": thread_id
@@ -95,7 +106,7 @@ class ATPagent:
         async for event in self.graph.astream(query, stream_mode="updates", config=config):
             yield event
     
-    def excute(self, query :Dict[str,AnyMessage], thread_id: str = "1"):
+    def excute(self, query :Dict[str,Any], thread_id: str = "1"):
         config = {
             "configurable" : {
                 "thread_id": thread_id
@@ -108,20 +119,25 @@ class ATPagent:
     def _core_model(self,state:State):
         if self.chat_model is None:
             raise ChatModelNoneException
-        response = self.chat_model.invoke(state["history"][-1]).result
+        response = self.chat_model.invoke([state["history"][-1]]).result
         return {"history": [AIMessage(response)]}
+    
+    def _auto_prove(self,state:State):
+        conclusion = self._formal_language_converter(state["history"][-1].content)
+        result = prove_with_premises(premises=state["premises"], conclusion= conclusion)
+        
+        if result[0]:
+            return {"history" : [state["history"][-1]]}
+        
+        return {"history" : [SystemMessage("llm answer is wrong think step by step again")]}
         
     def _build(self):
         self.graph_builder.add_node("init",self._init_context)
         self.graph_builder.add_node("core_model",self._core_model)
         
         self.graph_builder.add_edge(START,"init")
-        self.graph_builder.add_edge("init","persona_manager")
+        self.graph_builder.add_edge("init","core_model")
         self.graph_builder.add_edge("persona_manager","summarize")
-        self.graph_builder.add_conditional_edges("summarize",self.router,["persona","persona_manager","user","tools","audio",END])
-        self.graph_builder.add_edge("user","persona_manager")
-        self.graph_builder.add_edge("tools","persona_manager")
-        self.graph_builder.add_edge("audio","user")
-        self.graph_builder.add_edge("persona","audio")
+        #self.graph_builder.add_conditional_edges("summarize",self.router,["persona","persona_manager","user","tools","audio",END])
         
         return self.graph_builder.compile(checkpointer=self.checkpointer,store=self.memory)

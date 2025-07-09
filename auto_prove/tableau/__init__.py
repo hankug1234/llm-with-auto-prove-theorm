@@ -405,22 +405,26 @@ def branch_closed(branch: List[Notated]) -> bool:
     return False
 
 
-def closed(tableau: List[List[Notated]]) -> bool:
+def closed(tableau: List[List[Notated]]) -> List[bool]:
     """tableau 의 모든 branch 가 닫혔으면 True"""
-    return all(branch_closed(branch) for branch in tableau)
+    return [branch_closed(branch) for branch in tableau]
 
 
 # --- 테스트 인터페이스 -----------------------------------------------------
-def prove(formula: Term, qdepth: int = 3, equality : int = 6):
+def prove(formula: Formula, qdepth: int = 3, equality : int = 6) -> Tuple[bool, List[List[Notated]], List[bool]]:
     reset_sko()
     reset_reflex_seen()
     reset_terms_in_branch()
     root = make_notated([], (Operation.NEG, formula))
-    tree = expand([[root]], qdepth, equality)
-    if closed(tree):
-        print(f"Proof found at Q-depth {qdepth}")
+    tableau = expand([[root]], qdepth, equality)
+    
+    branch_state = closed(tableau)
+    if all(branch_state):
+        #print(f"Proof found at Q-depth {qdepth}")
+        return (True, tableau, branch_state)
     else:
-        print(f"No proof at Q-depth {qdepth}")
+        #print(f"No proof at Q-depth {qdepth}")
+        return (False, tableau, branch_state)
         
 # ─────────────────────────────────────────────────────────────
 # 전제(assumptions)를 포함한 초기 branch 생성
@@ -463,10 +467,10 @@ def prove_with_premises(premises: List[Formula],
     reset_terms_in_branch()
     root_branch = _build_initial_branch(premises, conclusion)
     tableau = expand([root_branch], qdepth, equality) # 기존 expand 사용
- 
-    if closed(tableau):
-        print(f"⊢  증명 성공   (Q-depth={qdepth})")
-        return (True, tableau)
+    branch_state = closed(tableau)
+    if all(branch_state):
+        #print(f"⊢  증명 성공   (Q-depth={qdepth})")
+        return (True, tableau, branch_state)
     else:
-        print(f"⊢  증명 실패   (Q-depth={qdepth} 까지)")
-        return (False, tableau)
+        #print(f"⊢  증명 실패   (Q-depth={qdepth} 까지)")
+        return (False, tableau, branch_state)
