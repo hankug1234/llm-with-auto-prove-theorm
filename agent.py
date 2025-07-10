@@ -154,6 +154,6 @@ class ATPagent:
         self.graph_builder.add_edge("core_model","auto_prove")
         self.graph_builder.add_edge("core_model","auto_prove")
         self.graph_builder.add_edge("persona_manager","summarize")
-        #self.graph_builder.add_conditional_edges("summarize",self.router,["persona","persona_manager","user","tools","audio",END])
+       
         
         return self.graph_builder.compile(checkpointer=self.checkpointer,store=self.memory)
