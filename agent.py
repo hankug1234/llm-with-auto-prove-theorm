@@ -129,7 +129,12 @@ class ATPagent:
         if self.chat_model is None:
             raise ChatModelNoneException
         
-        response = self.chat_model.invoke([state["history"][-1]]).result
+        if len(state["history"]) >= 6 and all([ isinstance(message,SystemMessage) for message in state["history"][-5:]]):
+            user_message = interrupt("hard_to_solve")
+            response = self.chat_model.invoke([HumanMessage(user_message)]).result
+        else:
+            response = self.chat_model.invoke([state["history"][-1]]).result
+            
         return {"history": [AIMessage(response)]}
     
     def _auto_prove(self,state:State):
