@@ -29,10 +29,25 @@ class ToolCallResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     """이것은 llm model 의 일반적인 반환 양식 입니다. tools 호출 이외에는 이 양식을 사용 합니다.  """
-    response : str = Field(description="response of llm model")
+    answer: str = Field(description="response of llm model") 
 
 class Response(BaseModel):
-    result: Union[ToolCallResponse,MessageResponse]      
+    result: Union[ToolCallResponse,MessageResponse]
+    
+class FOLMessageResponse(BaseModel):
+    """
+    if llm output like FOL: <First-Order Logic expression> format use this response type   
+    """    
+    answer: str = Field(description="<First-Order Logic expression>") 
+
+class NoneFOLMessageResponse(BaseModel):
+    """
+    if llm output like NOT_FOL: <reason> format use this response type   
+    """    
+    answer: str = Field(description="<reason>") 
+
+class TranslateResponse(BaseModel):
+    result: Union[FOLMessageResponse,NoneFOLMessageResponse]
     
 class State(TypedDict):
     history: Annotated[list[AnyMessage], add_messages]
@@ -45,9 +60,11 @@ class ATPagent:
                  end_signal : str = "kill_9",
                  system_prompt : str =""
                  ,tools : List[Callable] =[] 
-                 ,chat_model: str = None
+                 ,chat_model = None
+                 ,fol_translate_model = None
                  ,embeddings=None
-                 ,fields: List[str] = []):
+                 ,fields: List[str] = []
+                 ,fol_strict_mode: bool = False):
         
         if len(tools) > 0:
             self.tools = Tools(tools)
@@ -64,16 +81,22 @@ class ATPagent:
             embeddings = OllamaEmbeddings(model="llama3")
         
         if chat_model is None:
-            chat_model = ChatOllama(model="gemma3:12b")
+            chat_model = ChatOllama(model="gemma3:12b").with_structured_output(Response,method="json_schema")
             
-        self.chat_model = chat_model.with_structured_output(Response,method="json_schema")
+        if fol_translate_model is None:
+            fol_translate_model = ChatOllama(model="gemma3:12b").with_structured_output(TranslateResponse,method="json_schema")
+            
+        self.chat_model = chat_model
         self.embeddings = embeddings 
+        self.fol_translate_model = fol_translate_model
         
         self.memory = InMemoryStore(index={
         "embed": self.embeddings,
         "dims": 4096,
         "fields":fields
         })
+        
+        self.set_fol_strict_mode(fol_strict_mode)
         
         self.checkpointer = MemorySaver()
         self.graph_builder = StateGraph(state_schema=State)
@@ -88,17 +111,36 @@ class ATPagent:
             
         return {"history" : new_history}
     
-    def _retrive(self, namespace: str ,query: str , limit: int, store:BaseStore)-> list[SearchItem]: 
+    def _retrive_long_term_memory(self, namespace: str ,query: str , limit: int, store:BaseStore)-> list[SearchItem]: 
         return store.search((self.user_id, namespace), query=query, limit=limit)
     
-    def _save(self, namespace: str, value: dict[str, Any], store:BaseStore):
+    def _save_long_term_memory(self, namespace: str, value: dict[str, Any], store:BaseStore):
         store.put((self.user_id,namespace),str(uuid.uuid4()),value)
         
-    def _formal_language_converter(self,formal_language_sentance : str) -> Formula:
-        pass
+        
+    def _formal_language_converter(self,sentance : str) -> Union[Formula,str]:
+        
+        def _converter(formal_sentance:str) -> Formula:
+            pass
+        
+        result = self.fol_translate_model.invoke([HumanMessage(sentance)]).result 
+        if isinstance(result,NoneFOLMessageResponse):
+            return result.answer 
+        
+        return _converter(result.answer)
+                    
     
     def _analisys_terminologys(self, branches: List[List[Notated]]) -> Tuple[bool,List[str]]:
         pass
+    
+    def set_fol_strict_mode(self,mode:bool):
+        self.fol_strict_mode = mode
+        if self.fol_strict_mode:
+            from prompt.fol_convertor_strict import PROMPT
+            self.fol_translate_prompt = PROMPT 
+        else: 
+            from prompt.fol_convertor_none_strict import PROMPT 
+            self.fol_translate_prompt = PROMPT 
     
     async def async_excute(self, query :Dict[str,Any], thread_id: str = "1"):
         config = {
@@ -129,13 +171,17 @@ class ATPagent:
         if self.chat_model is None:
             raise ChatModelNoneException
         
-        if len(state["history"]) >= 6 and all([ isinstance(message,SystemMessage) for message in state["history"][-5:]]):
+        if len(state["history"]) >= 6 and any([isinstance(message,HumanMessage) for message in state["history"][-5:]]):
             user_message = interrupt("hard_to_solve")
             response = self.chat_model.invoke([HumanMessage(user_message)]).result
         else:
             response = self.chat_model.invoke([state["history"][-1]]).result
             
-        return {"history": [AIMessage(response)]}
+        if isinstance(response,ToolCallResponse):
+            tool_call_results = "\n".join([f"{k} = {v}" for k,v in self.tools.tools_calling(response.tools)])
+            return Command(goto="core_model", update = {"history": [SystemMessage(tool_call_results)]})
+            
+        return {"history": [AIMessage(response.answer)]}
     
     def _auto_prove(self,state:State):
         conclusion = self._formal_language_converter(state["history"][-1].content)

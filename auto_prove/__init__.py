@@ -1,6 +1,23 @@
 from enum import Enum
 from typing import List, Union, Tuple, Set
 
+
+_logic_operator_mapping = {
+    '¬': 'neg',
+    '∧': 'and',
+    '∨': 'or',
+    '→': 'imp',
+    '←': 'revimp',
+    '↑': 'uparrow',
+    '↓': 'downarrow',
+    '¬→': 'notimp',        
+    '¬←': 'notrevimp',     
+    '↔': 'and_imp_bi',     
+    '=': 'equal',
+    '∀': 'all',
+    '∃': 'some'
+}
+
 class Terminology:
     def __init__(self, name: str, args: List['Term']):
         self.name = name
@@ -101,6 +118,16 @@ Formula = Union[
     Tuple[Operation, 'Formula', 'Formula']      # 이항
 ]
 Notated = Tuple[List[Var], Formula]
+
+def operation(logic_operation: str) -> Operation:
+    try:
+        return Operation(_logic_operator_mapping[logic_operation])
+    except Exception as e:
+        print(e)
+        return None
+
+def is_operation(logic_operation:str)->bool:
+    return logic_operation in _logic_operator_mapping.keys()
 
 def partial_value(term: Term, env: Env, visited: Set[Var] = None) -> Term:
     if visited is None:
