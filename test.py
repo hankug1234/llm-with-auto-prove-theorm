@@ -6,7 +6,8 @@ class OperationException(Exception):
     def __init__(self,message):
         super.__init__(message)
 
-def _make_atom(stack):
+            
+def _make_atom_or_term(stack):
     _stack = deque([e for e in stack])
     args = deque([])
     _name = ""
@@ -15,10 +16,13 @@ def _make_atom(stack):
         if isinstance(e,Term):
             args.appendleft(_stack.pop())
         elif isinstance(e,Atom) or isinstance(e,Formula) or isinstance(e,Operation) or e == ' ' or e == ',' or (e == '(' and _name != "") :
-                if '(' in _name:
+                if '(' in _name: 
                     _name.replace('(',"")
-                    if len(_name) > 0:
+                    if len(_name) > 0 and isinstance(e,Operation):
                         _stack.append(Terminology(_name,list(args)))
+                        return _stack
+                    elif len(_name) > 0:
+                        _stack.append(Fun(_name,list(args)))
                         return _stack
                 elif '(' not in _name and len(args) == 0 :
                     if _name in ['⊤','true','True']:
@@ -27,27 +31,6 @@ def _make_atom(stack):
                     elif _name in ['⊥','false','False']:
                         _stack.append(False) 
                         return _stack 
-                return None 
-        else:
-            _past += _stack.pop()
-    return None
-
-            
-def _make_term(stack):
-    _stack = deque([e for e in stack])
-    args = deque([])
-    _name = ""
-    while len(_stack) > 0:
-        e = _stack[-1]
-        if isinstance(e,Term):
-            args.appendleft(_stack.pop())
-        #인수로 쓰인건지 확인 하는 부분 있어야 함
-        elif isinstance(e,Atom) or isinstance(e,Formula) or isinstance(e,Operation) or e == ' ' or e == ',' or (e == '(' and _name != "") :
-                if '(' in _name: 
-                    _name.replace('(',"")
-                    if len(_name) > 0:
-                        _stack.append(Terminology(_name,list(args)))
-                        return _stack
                 elif '(' not in _name and len(args) == 0 :
                     if re.fullmatch(r'[a-z]', _name):
                         _stack.append(Var(_name)) 
@@ -85,18 +68,7 @@ def _pre_modifing(stack,ch):
     else:
         e = stack.pop()
         stack.append(op)
-        stack.append(e)   
-
-def _make_atom_or_term(stack):
-    _term = _make_term(stack)
-    if _term is not None:
-        return _term 
-    _atom = _make_atom(stack)
-    if _atom is not None:
-        return _atom 
-    return stack
-        
-    
+        stack.append(e)       
 
 def convert(formal_sentance: str) -> Formula:     
     _formal_sentance = f"( {formal_sentance} )"

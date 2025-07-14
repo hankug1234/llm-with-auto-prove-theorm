@@ -24,6 +24,19 @@ Rules:
 - Use variables like x, y, z
 - Never include any explanation outside of the FOL or NOT_FOL line.
 
+Predicate and Function Conventions:
+- Use **uppercase predicate names**: Likes(x, y), Human(x), Sad(x)
+- Use **lowercase function names**: fatherOf(x), owns(x), ageOf(x)
+- A predicate returns true or false (a statement); a function returns an entity (a term).
+  - Example:
+    - Predicate: Likes(x, y)
+    - Function: parentOf(x) → used as Loves(parentOf(x), x)
+
+Premise and Conclusion Format:
+- Clearly separate premises and the conclusion using the symbol: ⊢
+- Multiple premises are separated by commas.
+- Output must follow this structure: FOL: <premise1>, <premise2>, ..., <premiseN> ⊢ <conclusion>
+
 Examples:
 - "All cats are animals." → FOL: ∀x (Cat(x) → Animal(x))
 - "Some people believe in love." → FOL: ∃x (Person(x) ∧ Believes(x, Love))
