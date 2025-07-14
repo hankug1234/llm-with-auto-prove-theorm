@@ -31,6 +31,8 @@ Predicate and Function Conventions:
   - Example:
     - Predicate: Likes(x, y)
     - Function: parentOf(x) → used as Loves(parentOf(x), x)
+- If an atomic symbol contains apostrophes or natural language phrases,
+  try to rewrite it into standard FOL structure using functions and equality.
 
 Premise and Conclusion Format:
 - Clearly separate premises and the conclusion using the symbol: ⊢
