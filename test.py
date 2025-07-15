@@ -1,4 +1,4 @@
-from auto_prove import Formula, Atom, Term, Constance, Var, Fun, Terminology, Operation, operation, is_operation
+from auto_prove import Formula, Atom, Term, Constant, Var, Fun, Terminology, Operation, operation, is_operation
 from collections import deque 
 import re
 
@@ -6,7 +6,21 @@ class OperationException(Exception):
     def __init__(self,message):
         super.__init__(message)
 
-            
+def is_atom(e)->bool:
+    if isinstance(e,bool) or isinstance(e,Terminology):
+        return True
+    return False 
+
+def is_term(e)->bool:
+    if isinstance(e,Constant) or isinstance(e,Var) or isinstance(e,Fun):
+        return True
+    return False 
+
+def is_formula(e)->bool:
+    if is_atom(e) or is_term(e) or isinstance(e,tuple):
+        return True
+    return False 
+
 def _make_atom_or_term(stack):
     _stack = deque([e for e in stack])
     args = deque([])
@@ -15,10 +29,13 @@ def _make_atom_or_term(stack):
         e = _stack[-1]
         if isinstance(e,Term):
             args.appendleft(_stack.pop())
-        elif isinstance(e,Atom) or isinstance(e,Formula) or isinstance(e,Operation) or e == ' ' or e == ',' or (e == '(' and _name != "") :
+        elif is_formula(e) or isinstance(e,Operation) or e == ' ' or e == ',' or (e == '(' and _name != "") :
+                if e == ' ' or e == ',':
+                    _stack.pop()
+                    
                 if '(' in _name: 
                     _name.replace('(',"")
-                    if len(_name) > 0 and isinstance(e,Operation):
+                    if len(_name) > 0 and _name[0].isupper():
                         _stack.append(Terminology(_name,list(args)))
                         return _stack
                     elif len(_name) > 0:
@@ -36,11 +53,10 @@ def _make_atom_or_term(stack):
                         _stack.append(Var(_name)) 
                         return _stack
                     elif _name:
-                        _stack.append(Constance(_name)) 
+                        _stack.append(Constant(_name)) 
                         return _stack 
-                return None 
         else:
-            _past += _stack.pop()
+            _name += _stack.pop()
     return None
 
 def _make_formula(stack):
@@ -71,7 +87,7 @@ def _pre_modifing(stack,ch):
         stack.append(e)       
 
 def convert(formal_sentance: str) -> Formula:     
-    _formal_sentance = f"( {formal_sentance} )"
+    _formal_sentance = f"({formal_sentance})"
     _tokens = _formal_sentance.split(" ")
     _stack = deque([])
     
@@ -79,16 +95,24 @@ def convert(formal_sentance: str) -> Formula:
             
         for ch in _token:
             
-            if ch is ')':
-                _stack = _make_atom_or_term(_stack)
+            if ch == ')':
+                _tmp = _make_atom_or_term(_stack)
+                if _tmp:
+                    _stack = _tmp
                 _make_formula(_stack)
-            elif ch is ',':
-                _stack = _make_atom_or_term(_stack)
+            elif ch == ',':
+                _tmp = _make_atom_or_term(_stack)
+                if _tmp:
+                    _stack = _tmp
             elif is_operation(ch):
-                _stack = _make_atom_or_term(_stack)
+                _tmp = _make_atom_or_term(_stack)
+                if _tmp:
+                    _stack = _tmp
                 _pre_modifing(_stack,ch)
             else:
                 _stack.append(ch) 
         _stack.append(" ")
     return _stack[0]
-    
+
+if __name__ == "__main__":
+    print(convert("∀x (P(x) → P(f(x)))"))

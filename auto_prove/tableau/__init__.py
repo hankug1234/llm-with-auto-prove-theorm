@@ -1,7 +1,7 @@
 from typing import List, Tuple,  Optional, Dict, Set
 import itertools, sys 
 sys.path.append(".")
-from auto_prove import unify_list, Formula, Notated, Term, Fun, Var, Operation, Terminology, Constance, Atom
+from auto_prove import unify_list, Formula, Notated, Term, Fun, Var, Operation, Terminology, Constant, Atom
 
 
 # --- Skolem 함수 인덱스 관리 ---------------------------------------------

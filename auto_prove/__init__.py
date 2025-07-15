@@ -67,7 +67,7 @@ class Fun:
     def __hash__(self):
         return hash(("function",self.name, tuple(self.args)))
         
-class Constance:
+class Constant:
     def __init__(self, const: str):
         self.const = const 
     def __repr__(self):
@@ -75,7 +75,7 @@ class Constance:
     def __str__(self):
         return f"constance {self.const}"
     def __eq__(self, other):
-        return isinstance(other, Constance) and self.const == other.const
+        return isinstance(other, Constant) and self.const == other.const
     def __hash__(self):
         return hash(("constance", self.const))
     
@@ -108,7 +108,7 @@ class Operation(Enum):
         
 # --- 용어 정의 ------------------------------------------------------------
 # Term: 원자 기호나 함수 응용, 혹은 문자열(변수/상수)
-Term = Union[Var, Fun, Constance]
+Term = Union[Var, Fun, Constant]
 Atom = Union[bool,Terminology]
 Env = List[Tuple[Var, Term]]
 Formula = Union[
