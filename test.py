@@ -1,9 +1,11 @@
 from auto_prove import Formula, Constant, Var, Function, Predicate, Operation, operation, is_operation, is_atom
 from collections import deque 
 from typing import Tuple,List
-import re
+import re,sys
 
-_variation_pattern = re.compile(r'^[A-Za-z]$')
+sys.setrecursionlimit(10000)
+
+_variation_pattern = re.compile(r'^[a-z]$')
 
 class String2FormulaConvertException(Exception):
     def __init__(self,message):
@@ -13,35 +15,42 @@ def _formula(formula:str) -> Tuple[Formula, str]:
     value = ""
     remain = None
     params = []
-    while True:
-        for i,ch in enumerate(formula):
-            if ch == "(":
-                formula, remain = _formula(formula[i:])
-                params.append(formula)
-                break 
-            elif ch == ")":
-                if value != "":
-                    if value[0].isupper():
-                        return (Predicate(value,params), formula[i:])
-                    else:
-                        return (Function(value,params), formula[i:])
+    i = 0
+    while i < len(formula):
+        ch = formula[i]
+        if ch == "(":
+            formula, remain = _formula(formula[i+1:])
+            params.append(formula)
+            formula = remain
+            i = 0
+            continue
+        elif ch == ")":
+            if value:
+                if value[0].isupper():
+                    return (Predicate(value,params), formula[i+1:])
                 else:
-                    return (tuple(params), formula[i:])
-            elif ch == ',' or is_operation(ch) or i+1 == len(formula):
-                if is_operation(ch):
-                    params.append(operation(ch))
-                                  
-                if _variation_pattern.fullmatch(value):
-                    params.append(Var(value))
-                elif len(value) >= 1:
+                    return (Function(value,params), formula[i+1:])
+            else:
+                return (tuple(params), formula[i+1:])
+        elif ch == ',' or is_operation(ch) or i+1 == len(formula):
+                                
+            if _variation_pattern.fullmatch(value):
+                params.append(Var(value))
+            elif len(value) >= 1:
+                if value == "false":
+                    params.append(False)
+                elif value == "true":
+                    params.append(True)
+                else:
                     params.append(Constant(value))
                 value = ""
-            else:
-                if ch != ' ':
-                    value+=ch
-        if remain == "" or remain is None:
-            break              
-        formula = remain
+            if is_operation(ch):
+                params.append(operation(ch))
+        else:
+            if ch != ' ':
+                value+=ch
+        i+=1           
+
     return (tuple(params),remain)
 
 def _pre_modification(formula: Formula)->Formula:
