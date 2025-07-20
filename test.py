@@ -1,118 +1,79 @@
-from auto_prove import Formula, Atom, Term, Constant, Var, Fun, Terminology, Operation, operation, is_operation
+from auto_prove import Formula, Constant, Var, Function, Predicate, Operation, operation, is_operation, is_atom
 from collections import deque 
+from typing import Tuple,List
 import re
 
-class OperationException(Exception):
+_variation_pattern = re.compile(r'^[A-Za-z]$')
+
+class String2FormulaConvertException(Exception):
     def __init__(self,message):
         super.__init__(message)
 
-def is_atom(e)->bool:
-    if isinstance(e,bool) or isinstance(e,Terminology):
-        return True
-    return False 
-
-def is_term(e)->bool:
-    if isinstance(e,Constant) or isinstance(e,Var) or isinstance(e,Fun):
-        return True
-    return False 
-
-def is_formula(e)->bool:
-    if is_atom(e) or is_term(e) or isinstance(e,tuple):
-        return True
-    return False 
-
-def _make_atom_or_term(stack):
-    _stack = deque([e for e in stack])
-    args = deque([])
-    _name = ""
-    while len(_stack) > 0:
-        e = _stack[-1]
-        if isinstance(e,Term):
-            args.appendleft(_stack.pop())
-        elif is_formula(e) or isinstance(e,Operation) or e == ' ' or e == ',' or (e == '(' and _name != "") :
-                if e == ' ' or e == ',':
-                    _stack.pop()
-                    
-                if '(' in _name: 
-                    _name.replace('(',"")
-                    if len(_name) > 0 and _name[0].isupper():
-                        _stack.append(Terminology(_name,list(args)))
-                        return _stack
-                    elif len(_name) > 0:
-                        _stack.append(Fun(_name,list(args)))
-                        return _stack
-                elif '(' not in _name and len(args) == 0 :
-                    if _name in ['⊤','true','True']:
-                        _stack.append(True) 
-                        return _stack
-                    elif _name in ['⊥','false','False']:
-                        _stack.append(False) 
-                        return _stack 
-                elif '(' not in _name and len(args) == 0 :
-                    if re.fullmatch(r'[a-z]', _name):
-                        _stack.append(Var(_name)) 
-                        return _stack
-                    elif _name:
-                        _stack.append(Constant(_name)) 
-                        return _stack 
-        else:
-            _name += _stack.pop()
-    return None
-
-def _make_formula(stack):
-        new_formula = deque([])
-        while len(stack) > 0:
-            e = stack.pop()
-            
-            if e == '(':
-                stack.append(tuple(new_formula))
-                return 
-            
-            new_formula.appendleft(e)
-            if isinstance(e,Operation):
-                sub_formula = tuple(new_formula)
-                new_formula.clear()
-                new_formula.appendleft(sub_formula)
-                        
-def _pre_modifing(stack,ch):
-    op = operation(ch)
-    if op is None:
-        raise OperationException("wrong operation")
-    
-    if op.is_binary_ops() or op.is_quantifiers():
-        stack.append(op)
-    else:
-        e = stack.pop()
-        stack.append(op)
-        stack.append(e)       
-
-def convert(formal_sentance: str) -> Formula:     
-    _formal_sentance = f"({formal_sentance})"
-    _tokens = _formal_sentance.split(" ")
-    _stack = deque([])
-    
-    for _token in _tokens:
-            
-        for ch in _token:
-            
-            if ch == ')':
-                _tmp = _make_atom_or_term(_stack)
-                if _tmp:
-                    _stack = _tmp
-                _make_formula(_stack)
-            elif ch == ',':
-                _tmp = _make_atom_or_term(_stack)
-                if _tmp:
-                    _stack = _tmp
-            elif is_operation(ch):
-                _tmp = _make_atom_or_term(_stack)
-                if _tmp:
-                    _stack = _tmp
-                _pre_modifing(_stack,ch)
+def _formula(formula:str) -> Tuple[Formula, str]:
+    value = ""
+    remain = None
+    params = []
+    while True:
+        for i,ch in enumerate(formula):
+            if ch == "(":
+                formula, remain = _formula(formula[i:])
+                params.append(formula)
+                break 
+            elif ch == ")":
+                if value != "":
+                    if value[0].isupper():
+                        return (Predicate(value,params), formula[i:])
+                    else:
+                        return (Function(value,params), formula[i:])
+                else:
+                    return (tuple(params), formula[i:])
+            elif ch == ',' or is_operation(ch) or i+1 == len(formula):
+                if is_operation(ch):
+                    params.append(operation(ch))
+                                  
+                if _variation_pattern.fullmatch(value):
+                    params.append(Var(value))
+                elif len(value) >= 1:
+                    params.append(Constant(value))
+                value = ""
             else:
-                _stack.append(ch) 
-        _stack.append(" ")
-    return _stack[0]
+                if ch != ' ':
+                    value+=ch
+        if remain == "" or remain is None:
+            break              
+        formula = remain
+    return (tuple(params),remain)
+
+def _pre_modification(formula: Formula)->Formula:
+
+    if is_atom(formula):
+        return formula
+    else:
+        temp = []
+        queue = deque(list(formula))
+        while len(queue) > 0:
+            f = queue.popleft()
+            if isinstance(f,Operation):
+                if f.is_binary_ops():
+                    temp.append((f,temp.pop(),_pre_modification(queue.appendleft())))
+                else:
+                    temp.append((f,_pre_modification(queue.appendleft())))
+            else:
+                temp.append(_pre_modification(f))
+        return temp[0]
+
+def str2formula(fol:str) -> Tuple[List[Formula], Formula]:
+    
+    conclusion = "⊢"
+    
+    if conclusion in fol:
+        premises, goal = fol.split(conclusion)
+        premises = _formula(premises)
+        goal = _formula(goal)
+        return ([_pre_modification(premise) for premise in premises ], _pre_modification(goal)) 
+    goal = _formula(fol)
+    return ([], _pre_modification(goal))
+
 
 if __name__ == "__main__":
-    print(convert("∀x (P(x) → P(f(x)))"))
+    print(str2formula("∀x (P(x) → P(f(x)))")[1])

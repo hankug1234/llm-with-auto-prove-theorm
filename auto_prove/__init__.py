@@ -18,23 +18,23 @@ _logic_operator_mapping = {
     '∃': 'some'
 }
 
-class Terminology:
+class Predicate:
     def __init__(self, name: str, args: List['Term']):
         self.name = name
         self.args = args
     def __repr__(self):
-        return f"terminology {self.name}({', '.join(map(str, self.args))})"
+        return f"predicate {self.name}({', '.join(map(str, self.args))})"
     def __str__(self):
-        return f"terminology {self.name}({', '.join(map(str, self.args))})"
+        return f"predicate {self.name}({', '.join(map(str, self.args))})"
     def __eq__(self, other):
         return (
-            isinstance(other, Terminology)
+            isinstance(other, Predicate)
             and self.name == other.name
             and len(self.args) == len(other.args)
             and all(a == b for a, b in zip(self.args, other.args))
         )
     def __hash__(self):
-        return hash(("terminology",self.name, tuple(self.args)))
+        return hash(("predicate",self.name, tuple(self.args)))
 
 # Represent variables and compound terms
 class Var:
@@ -49,7 +49,7 @@ class Var:
     def __hash__(self):
         return hash(("var", self.name))
 
-class Fun:
+class Function:
     def __init__(self, name: str, args: List['Term']):
         self.name = name
         self.args = args
@@ -59,7 +59,7 @@ class Fun:
         return f"function {self.name}({', '.join(map(str, self.args))})"
     def __eq__(self, other):
         return (
-            isinstance(other, Fun)
+            isinstance(other, Function)
             and self.name == other.name
             and len(self.args) == len(other.args)
             and all(a == b for a, b in zip(self.args, other.args))
@@ -108,8 +108,8 @@ class Operation(Enum):
         
 # --- 용어 정의 ------------------------------------------------------------
 # Term: 원자 기호나 함수 응용, 혹은 문자열(변수/상수)
-Term = Union[Var, Fun, Constant]
-Atom = Union[bool,Terminology]
+Term = Union[Var, Function, Constant]
+Atom = Union[bool,Predicate]
 Env = List[Tuple[Var, Term]]
 Formula = Union[
     Atom,
@@ -118,6 +118,21 @@ Formula = Union[
     Tuple[Operation, 'Formula', 'Formula']      # 이항
 ]
 Notated = Tuple[List[Var], Formula]
+
+def is_atom(e)->bool:
+    if isinstance(e,bool) or isinstance(e,Predicate):
+        return True
+    return False 
+
+def is_term(e)->bool:
+    if isinstance(e,Constant) or isinstance(e,Var) or isinstance(e,Function):
+        return True
+    return False 
+
+def is_formula(e)->bool:
+    if is_atom(e) or isinstance(e,tuple):
+        return True
+    return False 
 
 def operation(logic_operation: str) -> Operation:
     try:
@@ -145,7 +160,7 @@ def occurs_check(x: Var, term: Term, env: Env) -> bool:
     u = partial_value(term, env)
     if x == u:
         return True
-    if isinstance(u, Fun):
+    if isinstance(u, Function):
         return any(occurs_check(x, arg, env) for arg in u.args)
     return False
 
@@ -166,7 +181,7 @@ def unify(t1: Term, t2: Term, env: Env) -> Env:
     if isinstance(u2, Var) and not occurs_check(u2, u1, env):
         return add_binding(env, u2, u1)
 
-    if isinstance(u1, Fun) and isinstance(u2, Fun) and u1.name == u2.name and len(u1.args) == len(u2.args):
+    if isinstance(u1, Function) and isinstance(u2, Function) and u1.name == u2.name and len(u1.args) == len(u2.args):
         return unify_list(u1.args, u2.args, env)
 
     raise ValueError(f"Cannot unify {u1} and {u2}")

@@ -1,7 +1,7 @@
 from typing import List, Tuple,  Optional, Dict, Set
 import itertools, sys 
 sys.path.append(".")
-from auto_prove import unify_list, Formula, Notated, Term, Fun, Var, Operation, Terminology, Constant, Atom
+from auto_prove import unify_list, Formula, Notated, Term, Function, Var, Operation, Predicate, Constant, Atom
 
 
 # --- Skolem 함수 인덱스 관리 ---------------------------------------------
@@ -9,10 +9,10 @@ _sko_counter = itertools.count(1)
 _reflex_seen: Dict[int, Set[int]] = {}   # branch_id → {hash(term), ...}
 terms_in_branch = set()
 
-def new_sko_fun(free_vars: List[Var]) -> Fun:
+def new_sko_fun(free_vars: List[Var]) -> Function:
     """새로운 Skolem 함수 f_i(free_vars...)를 생성."""
     i = next(_sko_counter)
-    return Fun(f"f_{i}",free_vars)
+    return Function(f"f_{i}",free_vars)
 
 def reset_sko():
     """Skolem 함수 인덱스 리셋."""
@@ -42,13 +42,13 @@ def make_notated(free: List[Var], formula: Formula) -> Notated:
 def substitute_term(term: Term, old: Term, new: Term) -> Term:
     if term == old:
         return new
-    if isinstance(term, Fun):
-        return Fun(term.name,[substitute_term(t, old, new) for t in term.args])
+    if isinstance(term, Function):
+        return Function(term.name,[substitute_term(t, old, new) for t in term.args])
     return term
 
 def substitute_in_formula(form: Formula, old: Term, new: Term) -> Formula:
-    if isinstance(form, Terminology):
-        return Terminology(form.name, [substitute_term(t, old, new) for t in form.args])
+    if isinstance(form, Predicate):
+        return Predicate(form.name, [substitute_term(t, old, new) for t in form.args])
 
     if isinstance(form,Term):
         return substitute_term(form, old, new)
@@ -203,7 +203,7 @@ def instance(form: Formula, term: Term) -> Formula:
     raise ValueError(f"No instance for {form}")
 
 def is_atomic(form: Formula) -> bool:
-    if isinstance(form, Terminology) or isinstance(form,bool):
+    if isinstance(form, Predicate) or isinstance(form,bool):
         return True 
     return False
 
@@ -344,18 +344,18 @@ def expand(tableau: List[List[Notated]], qdepth: int, equality: int) -> List[Lis
 # --- 분기 닫힘 검사 closed -----------------------------------------------
 def is_literal(form: Formula) -> bool:
     """원자식 또는 그 부정인지 판별."""
-    if isinstance(form, Terminology):
+    if isinstance(form, Predicate):
         return True                 # P(t)
     if (isinstance(form, tuple) and
         form[0] == Operation.NEG and
-        isinstance(form[1], Terminology)):
+        isinstance(form[1], Predicate)):
         return True                 # ¬P(t)
     return False
 
 
 def negate_literal(lit: Formula) -> Formula:
     """리터럴 lit의 논리적 부정을 돌려준다."""
-    if isinstance(lit, Terminology):                 # P(t) → ¬P(t)
+    if isinstance(lit, Predicate):                 # P(t) → ¬P(t)
         return (Operation.NEG, lit)
     if (isinstance(lit, tuple) and lit[0] == Operation.NEG):
         return lit[1]                              # ¬P(t) → P(t)
@@ -385,14 +385,14 @@ def branch_closed(branch: List[Notated]) -> bool:
             try:
                 
                 if (isinstance(lit2, tuple) and lit2[0] == Operation.NEG
-                        and isinstance(lit1, Terminology)):
+                        and isinstance(lit1, Predicate)):
                     lit2_inner = lit2[1]
                     if lit1.name == lit2_inner.name:
                         _ = unify_list(lit1.args, lit2_inner.args, [])
                         return True
                      
                 elif (isinstance(lit1, tuple) and lit1[0] == Operation.NEG
-                        and isinstance(lit2, Terminology)):
+                        and isinstance(lit2, Predicate)):
                     lit1_inner = lit1[1]
                     if lit2.name == lit1_inner.name:
                         _ = unify_list(lit1_inner.args, lit2.args, [])
