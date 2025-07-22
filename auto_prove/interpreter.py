@@ -101,7 +101,7 @@ def _seperate_premises(premises:List[Formula]) -> List[Tuple]:
         seperated.append(tuple(stack))
     return seperated 
 
-def str2formula(fol:str) -> Tuple[List[Formula], Formula]:
+def pre_modification_fol_interpreter(fol:str) -> Tuple[List[Formula], Formula]:
     
     conclusion = "⊢"
     
@@ -117,4 +117,4 @@ def str2formula(fol:str) -> Tuple[List[Formula], Formula]:
 
 
 if __name__ == "__main__":
-    print(str2formula("∀x (P(x) → P(f(x)))")[1])
+    print(pre_modification_fol_interpreter("∀x (P(x) → P(f(x)))")[1])
