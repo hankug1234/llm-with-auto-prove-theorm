@@ -3,7 +3,7 @@ sys.path.append(".")
 from auto_prove import Function, Var, Operation, Predicate, Constant
 from auto_prove.tableau import Tableau
 
-if __name__ == "__main__":
+def test_prove_with_premises():
     tableau_prover = Tableau()
     prove_with_premises = tableau_prover.prove_with_premises
     
@@ -111,8 +111,10 @@ if __name__ == "__main__":
     tableaus.append(prove_with_premises([prem1,prem2], goal, qdepth=5))
     # ----------------------------------------------
     
-    print("Tableaus:") 
     for i, tableau in enumerate(tableaus, 1):
-        print(f"Tableau {i}: {tableau[0]}")
+        if i in (2, 6, 7):
+            assert tableau[0] == False 
+        else:
+            assert tableau[0] == True
         
     
