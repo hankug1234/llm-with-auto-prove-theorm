@@ -6,7 +6,7 @@ def test_interpreter():
     from auto_prove.interpreter import pre_modification_fol_interpreter as interpreter  
      # 1. 기본 유효   P(a),  ∀x( P(x) → Q(x) ) ⊢ Q(a)
     prem1 = Predicate("P", [Constant("a")])
-    prem2 = (Operation.ALL, "x",
+    prem2 = (Operation.ALL, Var("x"),
             (Operation.IMPLIE,
             Predicate("P", [Var("x")]),
             Predicate("Q", [Var("x")])))
@@ -16,7 +16,7 @@ def test_interpreter():
     assert target == goal
     # ----------------------------------------------
     # 2. 동일 변수 반복 (무효)  ∀x P(x) ⊢ Q(a)
-    prem1 = (Operation.ALL, "x", Predicate("P", [Var("x")]))
+    prem1 = (Operation.ALL, Var("x"), Predicate("P", [Var("x")]))
     goal  = Predicate("Q", [Constant("a")])    # entailment가 안 됨
     premises, target = interpreter("∀x P(x) ⊢ Q(a)")
     assert premises == [prem1]
@@ -34,15 +34,15 @@ def test_interpreter():
     
     # ----------------------------------------------
     # 4. ∃ 제거  ∃y (R(y) ∧ P(y)) , ∀x (R(x) → Q(x)) ⊢ ∃z Q(z)
-    prem1 = (Operation.SOME, "y",
+    prem1 = (Operation.SOME, Var("y"),
             (Operation.AND,
             Predicate("R", [Var("y")]),
             Predicate("P", [Var("y")])))
-    prem2 = (Operation.ALL, "x",
+    prem2 = (Operation.ALL, Var("x"),
             (Operation.IMPLIE,
             Predicate("R", [Var("x")]),
             Predicate("Q", [Var("x")])))
-    goal  = (Operation.SOME, "z", Predicate("Q", [Var("z")]))
+    goal  = (Operation.SOME, Var("z"), Predicate("Q", [Var("z")]))
     premises, target = interpreter("∃y (R(y) ∧ P(y)) , ∀x (R(x) → Q(x)) ⊢ ∃z Q(z)")
     assert premises == [prem1, prem2]
     assert target == goal
@@ -82,15 +82,16 @@ def test_interpreter():
     
     # ----------------------------------------------
     # 8. ∀/∃ 혼합   ∀x (P(x) → ∃y R(x,y)) , P(c) ⊢ ∃y R(c,y)
-    prem1 = (Operation.ALL, "x",
+    prem1 = (Operation.ALL, Var("x"),
             (Operation.IMPLIE,
             Predicate("P", [Var("x")]),
-            (Operation.SOME, "y", Predicate("R", [Var("x"), Var("y")]))))
+            (Operation.SOME, Var("y"), Predicate("R", [Var("x"), Var("y")]))))
     prem2 = Predicate("P", [Constant("c")])
-    goal  = (Operation.SOME, "y", Predicate("R", [Constant("c"), Var("y")]))
+    goal  = (Operation.SOME, Var("y"), Predicate("R", [Constant("c"), Var("y")]))
     premises, target = interpreter("∀x (P(x) → ∃y R(x,y)) , P(c) ⊢ ∃y R(c,y)")
     assert premises == [prem1, prem2]
     assert target == goal
     
-    
-    
+if __name__ == "__main__":
+    from auto_prove.interpreter import pre_modification_fol_interpreter as interpreter  
+    print(interpreter("P(a), ∀x( P(x) → Q(x) ) ⊢ Q(a)"))

@@ -71,20 +71,20 @@ def _pre_modification(formula: Formula)->Formula:
     if is_atom(formula) or is_term(formula):
         return formula
     else:
-        temp = []
+        temp = None
         queue = deque(list(formula))
         while len(queue) > 0:
             f = queue.popleft()
             if isinstance(f,Operation):
                 if f.is_binary_ops():
-                    return (f,temp.pop(),_pre_modification(tuple(queue)))
+                    return (f,temp,_pre_modification(tuple(queue)))
                 elif f.is_quantifiers():
                     return (f,queue.popleft(), _pre_modification(tuple(queue)))
                 else:
                     return (f,_pre_modification(tuple(queue)))
             else:
-                temp.append(_pre_modification(f))
-        return temp[0]
+                temp = _pre_modification(f)
+        return temp
     
 def _seperate_premises(premises:List[Formula]) -> List[Tuple]:
     stack = []

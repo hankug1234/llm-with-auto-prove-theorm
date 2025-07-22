@@ -14,7 +14,7 @@ def test_prove_with_premises():
     # ----------------------------------------------
     # 1. 기본 유효   P(a),  ∀x( P(x) → Q(x) ) ⊢ Q(a)
     prem1 = Predicate("P", [Constant("a")])
-    prem2 = (Operation.ALL, "x",
+    prem2 = (Operation.ALL, Var("x"),
             (Operation.IMPLIE,
             Predicate("P", [Var("x")]),
             Predicate("Q", [Var("x")])))
@@ -22,7 +22,7 @@ def test_prove_with_premises():
     tableaus.append(prove_with_premises([prem1,prem2], goal, qdepth=5))
     # ----------------------------------------------
     # 2. 동일 변수 반복 (무효)  ∀x P(x) ⊬ Q(a)
-    prem1 = (Operation.ALL, "x", Predicate("P", [Var("x")]))
+    prem1 = (Operation.ALL, Var("x"), Predicate("P", [Var("x")]))
     goal  = Predicate("Q", [Constant("a")])    # entailment가 안 됨
     tableaus.append(prove_with_premises([prem1], goal, qdepth=5))
     # ----------------------------------------------
@@ -34,15 +34,15 @@ def test_prove_with_premises():
     tableaus.append(prove_with_premises([prem1], goal, qdepth=5))
     # ----------------------------------------------
     # 4. ∃ 제거  ∃y (R(y) ∧ P(y)) , ∀x (R(x) → Q(x)) ⊢ ∃z Q(z)
-    prem1 = (Operation.SOME, "y",
+    prem1 = (Operation.SOME, Var("y"),
             (Operation.AND,
             Predicate("R", [Var("y")]),
             Predicate("P", [Var("y")])))
-    prem2 = (Operation.ALL, "x",
+    prem2 = (Operation.ALL, Var("x"),
             (Operation.IMPLIE,
             Predicate("R", [Var("x")]),
             Predicate("Q", [Var("x")])))
-    goal  = (Operation.SOME, "z", Predicate("Q", [Var("z")]))
+    goal  = (Operation.SOME, Var("z"), Predicate("Q", [Var("z")]))
     tableaus.append(prove_with_premises([prem1,prem2], goal, qdepth=5))
     # ----------------------------------------------
     # 5. double-negation  ¬¬P(b) ⊢ P(b)
@@ -71,12 +71,12 @@ def test_prove_with_premises():
     
     # ----------------------------------------------
     # 8. ∀/∃ 혼합   ∀x (P(x) → ∃y R(x,y)) , P(c) ⊢ ∃y R(c,y)
-    prem1 = (Operation.ALL, "x",
+    prem1 = (Operation.ALL, Var("x"),
             (Operation.IMPLIE,
             Predicate("P", [Var("x")]),
-            (Operation.SOME, "y", Predicate("R", [Var("x"), Var("y")]))))
+            (Operation.SOME, Var("y"), Predicate("R", [Var("x"), Var("y")]))))
     prem2 = Predicate("P", [Constant("c")])
-    goal  = (Operation.SOME, "y", Predicate("R", [Constant("c"), Var("y")]))
+    goal  = (Operation.SOME, Var("y"), Predicate("R", [Constant("c"), Var("y")]))
     tableaus.append(prove_with_premises([prem1,prem2], goal, qdepth=5))
     # ----------------------------------------------
     
