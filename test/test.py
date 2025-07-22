@@ -1,9 +1,11 @@
-import itertools, sys 
+import sys 
 sys.path.append(".")
-from auto_prove import unify_list, Formula, Notated, Term, Function, Var, Operation, Predicate, Constant, Atom
-from auto_prove.tableau import prove_with_premises
+from auto_prove import Function, Var, Operation, Predicate, Constant
+from auto_prove.tableau import Tableau
 
 if __name__ == "__main__":
+    tableau_prover = Tableau()
+    prove_with_premises = tableau_prover.prove_with_premises
     
     tableaus = []
     
@@ -109,6 +111,8 @@ if __name__ == "__main__":
     tableaus.append(prove_with_premises([prem1,prem2], goal, qdepth=5))
     # ----------------------------------------------
     
-    
-    
+    print("Tableaus:") 
+    for i, tableau in enumerate(tableaus, 1):
+        print(f"Tableau {i}: {tableau[0]}")
+        
     
