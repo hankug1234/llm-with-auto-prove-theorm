@@ -71,7 +71,8 @@ def _formula(formula:str) -> Tuple[Formula, str]:
         else:
             value+=ch
         i+=1           
-
+    if len(params) == 1:
+        return (params[0],remain)
     return (tuple(params),remain)
 
 def _pre_modification(formula: Formula)->Formula:
@@ -92,14 +93,21 @@ def _pre_modification(formula: Formula)->Formula:
                     return (f,_pre_modification((e for e in queue)))
             else:
                 temp = _pre_modification(f)
-    raise String2FormulaConvertException("convert error")
+    if temp is None:
+        raise String2FormulaConvertException("convert error")
+    
+    return temp
     
 def _seperate_premises(premises:List[Formula]) -> List[Tuple]:
     stack = []
     seperated = []
     for formula in premises:
         if len(stack) != 0 and is_formula(stack[-1]) and not is_formula(formula) :
-            seperated.append(tuple(stack))
+            if len(stack) == 1:
+                seperated.append(stack[0])
+            else:
+                seperated.append(tuple(stack))
+            
             stack = []    
             stack.append(formula)
         else:
@@ -118,7 +126,7 @@ def pre_modification_fol_interpreter(fol:str) -> Tuple[List[Formula], Formula]:
         premises,_ = _formula(premises)
         premises = _seperate_premises(premises)
         goal,_ = _formula(goal)
-        print(premises)
+        
         return ([_pre_modification(premise) for premise in premises ], _pre_modification(goal)) 
     
     goal,_ = _formula(fol)
