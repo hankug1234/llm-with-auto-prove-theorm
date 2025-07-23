@@ -8,8 +8,9 @@ sys.setrecursionlimit(10000)
 _variation_pattern = re.compile(r'^[a-z]$')
 
 class String2FormulaConvertException(Exception):
-    def __init__(self,message):
-        super.__init__(message)
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
 
 def _primitive(value:str)->Union[bool,Var,Constant]:
     if _variation_pattern.fullmatch(value):
@@ -31,13 +32,20 @@ def _formula(formula:str) -> Tuple[Formula, str]:
     while i < len(formula):
         ch = formula[i]
         if ch == "(":
+            
             _params, remain = _formula(formula[i+1:])
-            if re.fullmatch(_variation_pattern,value):
+            all_is_term = all((is_term(_param)) for _param in _params)
+            
+            if len(value) >= 1 and value[0].isupper() and all_is_term:
                 sub_formula = Predicate(value,list(_params))
-            elif len(value) >= 1:
+            elif len(value) >= 1 and all_is_term:
                 sub_formula = Function(value,list(_params))
             else:
                 sub_formula = _params
+                primitive = _primitive(value)
+                if primitive is not None:
+                    params.append(primitive)
+                
             params.append(sub_formula)
             formula = remain
             i = 0
@@ -48,7 +56,8 @@ def _formula(formula:str) -> Tuple[Formula, str]:
             primitive = _primitive(value)
             if primitive is not None:
                 params.append(primitive)
-            
+                
+            value = ""
             return (tuple(params), formula[i+1:])
         elif ch == ',' or ch.isspace() or is_operation(ch) or i+1 == len(formula):
                                 
@@ -59,7 +68,6 @@ def _formula(formula:str) -> Tuple[Formula, str]:
             if is_operation(ch):
                 params.append(operation(ch))
             value = ""
-            
         else:
             value+=ch
         i+=1           
@@ -77,14 +85,14 @@ def _pre_modification(formula: Formula)->Formula:
             f = queue.popleft()
             if isinstance(f,Operation):
                 if f.is_binary_ops():
-                    return (f,temp,_pre_modification(tuple(queue)))
+                    return (f,temp,_pre_modification((e for e in queue)))
                 elif f.is_quantifiers():
-                    return (f,queue.popleft(), _pre_modification(tuple(queue)))
+                    return (f,queue.popleft(), _pre_modification((e for e in queue)))
                 else:
-                    return (f,_pre_modification(tuple(queue)))
+                    return (f,_pre_modification((e for e in queue)))
             else:
                 temp = _pre_modification(f)
-        return temp
+    raise String2FormulaConvertException("convert error")
     
 def _seperate_premises(premises:List[Formula]) -> List[Tuple]:
     stack = []
@@ -110,9 +118,10 @@ def pre_modification_fol_interpreter(fol:str) -> Tuple[List[Formula], Formula]:
         premises,_ = _formula(premises)
         premises = _seperate_premises(premises)
         goal,_ = _formula(goal)
+        print(premises)
         return ([_pre_modification(premise) for premise in premises ], _pre_modification(goal)) 
+    
     goal,_ = _formula(fol)
-    print(goal)
     return ([], _pre_modification(goal))
 
 
