@@ -5,7 +5,7 @@ import re,sys
 
 sys.setrecursionlimit(10000)
 
-_variation_pattern = re.compile(r'^[a-z]$')
+_variation_pattern = re.compile(r'^[x-z][0-9]*$')
 
 class String2FormulaConvertException(Exception):
     def __init__(self, message):
@@ -97,21 +97,37 @@ def _pre_modification(formula: Formula)->Formula:
         raise String2FormulaConvertException("convert error")
     
     return temp
+
     
-def _seperate_premises(premises:List[Formula]) -> List[Tuple]:
+def _seperate_premises(premises:Formula) -> List[Formula]:
+    
+    def _seperate_point(e,stack):
+        if isinstance(e,Operation) and not e.is_binary_ops():
+            if len(stack) > 0 and is_formula(stack[-1]):
+                return True 
+        elif len(stack) > 0 and is_formula(stack[-1]) and is_formula(e):
+            if len(stack) > 1 and isinstance(stack[-2],Operation) and not stack[-2].is_quantifiers():
+                return True
+            elif len(stack) == 1:
+                return True 
+        return False
+                        
+    if is_atom(premises):
+        return [premises]
+    
     stack = []
     seperated = []
-    for formula in premises:
-        if len(stack) != 0 and is_formula(stack[-1]) and not is_formula(formula) :
+    for e in premises:
+        if _seperate_point(e,stack):
             if len(stack) == 1:
                 seperated.append(stack[0])
             else:
                 seperated.append(tuple(stack))
             
             stack = []    
-            stack.append(formula)
+            stack.append(e)
         else:
-            stack.append(formula)
+            stack.append(e)
                     
     if len(stack) > 0:
         seperated.append(tuple(stack))
@@ -126,7 +142,6 @@ def pre_modification_fol_interpreter(fol:str) -> Tuple[List[Formula], Formula]:
         premises,_ = _formula(premises)
         premises = _seperate_premises(premises)
         goal,_ = _formula(goal)
-        
         return ([_pre_modification(premise) for premise in premises ], _pre_modification(goal)) 
     
     goal,_ = _formula(fol)
@@ -134,4 +149,4 @@ def pre_modification_fol_interpreter(fol:str) -> Tuple[List[Formula], Formula]:
 
 
 if __name__ == "__main__":
-    print(pre_modification_fol_interpreter("∀x (P(x) → P(f(x)))")[1])
+    print(pre_modification_fol_interpreter("P(a),  ∀x( P(x) → Q(x) ) ⊢ Q(a)"))

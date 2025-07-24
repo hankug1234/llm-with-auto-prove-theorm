@@ -16,7 +16,7 @@ Rules:
 - Use standard quantifiers: ∀ (for all), ∃ (there exists)
 - Use logical operators: ∧ (and), ∨ (or), ¬ (not), → (implies), ↔ (iff)
 - Use uppercase predicates: Likes(x, y), Human(x), etc.
-- Use variable names like x, y, z
+- Use only variable names x, y, z, or versions of them with numeric suffixes (e.g., x1, y2, z3). Do not introduce any other variable names.
 
 Examples:
 - "All cats are animals." → FOL: ∀x (Cat(x) → Animal(x))

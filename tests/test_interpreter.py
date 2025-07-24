@@ -94,4 +94,4 @@ def test_interpreter():
     
 if __name__ == "__main__":
     from auto_prove.interpreter import pre_modification_fol_interpreter as interpreter  
-    print(interpreter("P(a), ∀x( P(x) → Q(x) ) ⊢ Q(a)"))
+    print(interpreter("P(a),  ∀x( P(x) → Q(x) ) ⊢ Q(a)"))
