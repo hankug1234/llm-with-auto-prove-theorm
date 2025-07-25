@@ -86,9 +86,17 @@ def _pre_modification(formula: Formula)->Formula:
             f = queue.popleft()
             if isinstance(f,Operation):
                 if f.is_binary_ops():
-                    return (f,temp,_pre_modification((e for e in queue)))
+                    if len(queue) == 1:
+                        remain = queue[0]
+                    else: 
+                        remain = queue
+                    return (f,temp,_pre_modification(remain))
                 elif f.is_quantifiers():
-                    return (f,queue.popleft(), _pre_modification((e for e in queue)))
+                    if len(queue) == 1:
+                        remain = queue[0]
+                    else: 
+                        remain = queue
+                    return (f,queue.popleft(), _pre_modification(remain))
                 else:
                     negs = []
                     while len(queue) > 0 and isinstance(queue[0], Operation) and queue[0].is_unary_ops():
@@ -115,10 +123,7 @@ def _seperate_premises(premises:Formula) -> List[Formula]:
             if len(stack) > 0 and is_formula(stack[-1]):
                 return True 
         elif len(stack) > 0 and is_formula(stack[-1]) and is_formula(e):
-            if len(stack) > 1 and isinstance(stack[-2],Operation) and not stack[-2].is_quantifiers():
-                return True
-            elif len(stack) == 1:
-                return True 
+            return True 
         return False
                         
     if is_atom(premises):
@@ -151,7 +156,6 @@ def pre_modification_fol_interpreter(fol:str) -> Tuple[List[Formula], Formula]:
         premises,_ = _formula(premises)
         premises = _seperate_premises(premises)
         goal,_ = _formula(goal)
-        print(premises,goal)
         return ([_pre_modification(premise) for premise in premises ], _pre_modification(goal)) 
     
     goal,_ = _formula(fol)

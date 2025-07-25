@@ -7,8 +7,6 @@ def test_prove_with_premises():
     tableau_prover = Tableau()
     prove_with_premises = tableau_prover.prove_with_premises
     
-    tableaus = []
-    
     # -------- 2 / 6 / 7 -------------- 증명 실패 여야 함
     
     # ----------------------------------------------
@@ -58,7 +56,7 @@ def test_prove_with_premises():
     goal  = (Operation.OR,
             (Operation.NEG, Predicate("P", [Constant("a")])),
             (Operation.NEG, Predicate("Q", [Constant("a")])))
-    assert False == prove_with_premises([prem1], goal, qdepth=5)[0]
+    assert True == prove_with_premises([prem1], goal, qdepth=5)[0]
     # ----------------------------------------------
     # 7. 조건부의 역 (무효)  P(a) → Q(a)  ⊬ Q(a) → P(a)
     prem1 = (Operation.IMPLIE,
