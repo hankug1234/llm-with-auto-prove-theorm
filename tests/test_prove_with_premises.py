@@ -19,19 +19,19 @@ def test_prove_with_premises():
             Predicate("P", [Var("x")]),
             Predicate("Q", [Var("x")])))
     goal  = Predicate("Q", [Constant("a")])
-    tableaus.append(prove_with_premises([prem1,prem2], goal, qdepth=5))
+    assert True == prove_with_premises([prem1,prem2], goal, qdepth=5)[0]
     # ----------------------------------------------
     # 2. 동일 변수 반복 (무효)  ∀x P(x) ⊬ Q(a)
     prem1 = (Operation.ALL, Var("x"), Predicate("P", [Var("x")]))
     goal  = Predicate("Q", [Constant("a")])    # entailment가 안 됨
-    tableaus.append(prove_with_premises([prem1], goal, qdepth=5))
+    assert False == prove_with_premises([prem1], goal, qdepth=5)[0]
     # ----------------------------------------------
     # 3. ∧ 도입  P(a) ∧ R(a) ⊢ R(a)
     prem1 = (Operation.AND,
             Predicate("P", [Constant("a")]),
             Predicate("R", [Constant("a")]))
     goal  = Predicate("R", [Constant("a")])
-    tableaus.append(prove_with_premises([prem1], goal, qdepth=5))
+    assert True == prove_with_premises([prem1], goal, qdepth=5)[0]
     # ----------------------------------------------
     # 4. ∃ 제거  ∃y (R(y) ∧ P(y)) , ∀x (R(x) → Q(x)) ⊢ ∃z Q(z)
     prem1 = (Operation.SOME, Var("y"),
@@ -43,22 +43,22 @@ def test_prove_with_premises():
             Predicate("R", [Var("x")]),
             Predicate("Q", [Var("x")])))
     goal  = (Operation.SOME, Var("z"), Predicate("Q", [Var("z")]))
-    tableaus.append(prove_with_premises([prem1,prem2], goal, qdepth=5))
+    assert True == prove_with_premises([prem1,prem2], goal, qdepth=5)[0]
     # ----------------------------------------------
     # 5. double-negation  ¬¬P(b) ⊢ P(b)
     prem1 = (Operation.NEG, (Operation.NEG, Predicate("P", [Constant("b")])))
     goal  = Predicate("P", [Constant("b")])
-    tableaus.append(prove_with_premises([prem1], goal, qdepth=5))
+    assert True == prove_with_premises([prem1], goal, qdepth=5)[0]
     # ----------------------------------------------
     # 6. De Morgan (무효)  ¬(P(a) ∧ Q(a)) ⊢ ¬P(a) ∨ ¬Q(a)   # 타블로가 닫히지 않음
-    prem1 = ("neg",
+    prem1 = (Operation.NEG,
             (Operation.AND,
             Predicate("P", [Constant("a")]),
             Predicate("Q", [Constant("a")])))
     goal  = (Operation.OR,
-            ("neg", Predicate("P", [Constant("a")])),
-            ("neg", Predicate("Q", [Constant("a")])))
-    tableaus.append(prove_with_premises([prem1], goal, qdepth=5))
+            (Operation.NEG, Predicate("P", [Constant("a")])),
+            (Operation.NEG, Predicate("Q", [Constant("a")])))
+    assert False == prove_with_premises([prem1], goal, qdepth=5)[0]
     # ----------------------------------------------
     # 7. 조건부의 역 (무효)  P(a) → Q(a)  ⊬ Q(a) → P(a)
     prem1 = (Operation.IMPLIE,
@@ -67,7 +67,7 @@ def test_prove_with_premises():
     goal  = (Operation.IMPLIE,
             Predicate("Q", [Constant("a")]),
             Predicate("P", [Constant("a")]))
-    tableaus.append(prove_with_premises([prem1], goal, qdepth=5))
+    assert False == prove_with_premises([prem1], goal, qdepth=5)[0]
     
     # ----------------------------------------------
     # 8. ∀/∃ 혼합   ∀x (P(x) → ∃y R(x,y)) , P(c) ⊢ ∃y R(c,y)
@@ -77,13 +77,8 @@ def test_prove_with_premises():
             (Operation.SOME, Var("y"), Predicate("R", [Var("x"), Var("y")]))))
     prem2 = Predicate("P", [Constant("c")])
     goal  = (Operation.SOME, Var("y"), Predicate("R", [Constant("c"), Var("y")]))
-    tableaus.append(prove_with_premises([prem1,prem2], goal, qdepth=5))
+    assert True == prove_with_premises([prem1,prem2], goal, qdepth=5)[0]
     # ----------------------------------------------
     
-    for i, tableau in enumerate(tableaus, 1):
-        if i in (2, 6, 7):
-            assert tableau[0] == False 
-        else:
-            assert tableau[0] == True
         
     

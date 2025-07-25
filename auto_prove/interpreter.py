@@ -90,7 +90,16 @@ def _pre_modification(formula: Formula)->Formula:
                 elif f.is_quantifiers():
                     return (f,queue.popleft(), _pre_modification((e for e in queue)))
                 else:
-                    return (f,_pre_modification((e for e in queue)))
+                    negs = []
+                    while len(queue) > 0 and isinstance(queue[0], Operation) and queue[0].is_unary_ops():
+                        negs.append(queue.popleft())
+                    if len(queue) > 0:
+                        temp = queue.popleft() 
+                        for neg in negs:
+                            temp = (neg,temp)
+                        temp = (f,_pre_modification(temp))
+                    else:    
+                        raise String2FormulaConvertException("convert error")
             else:
                 temp = _pre_modification(f)
     if temp is None:
@@ -142,6 +151,7 @@ def pre_modification_fol_interpreter(fol:str) -> Tuple[List[Formula], Formula]:
         premises,_ = _formula(premises)
         premises = _seperate_premises(premises)
         goal,_ = _formula(goal)
+        print(premises,goal)
         return ([_pre_modification(premise) for premise in premises ], _pre_modification(goal)) 
     
     goal,_ = _formula(fol)

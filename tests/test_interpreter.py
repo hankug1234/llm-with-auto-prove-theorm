@@ -57,13 +57,13 @@ def test_interpreter():
     
     # ----------------------------------------------
     # 6. De Morgan (무효)  ¬(P(a) ∧ Q(a)) ⊢ ¬P(a) ∨ ¬Q(a)   # 타블로가 닫히지 않음
-    prem1 = ("neg",
+    prem1 = (Operation.NEG,
             (Operation.AND,
             Predicate("P", [Constant("a")]),
             Predicate("Q", [Constant("a")])))
     goal  = (Operation.OR,
-            ("neg", Predicate("P", [Constant("a")])),
-            ("neg", Predicate("Q", [Constant("a")])))
+            (Operation.NEG, Predicate("P", [Constant("a")])),
+            (Operation.NEG, Predicate("Q", [Constant("a")])))
     premises, target = interpreter("¬(P(a) ∧ Q(a)) ⊢ ¬P(a) ∨ ¬Q(a)")
     assert premises == [prem1]
     assert target == goal
@@ -94,4 +94,4 @@ def test_interpreter():
     
 if __name__ == "__main__":
     from auto_prove.interpreter import pre_modification_fol_interpreter as interpreter  
-    print(interpreter("P(a),  ∀x( P(x) → Q(x) ) ⊢ Q(a)"))
+    print(interpreter("∀x (P(x) → ∃y R(x,y)) , P(c) ⊢ ∃y R(c,y)"))
