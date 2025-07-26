@@ -425,31 +425,12 @@ class Tableau:
     # ─────────────────────────────────────────────────────────────
     #  S ⊢ X  판단 함수 (premises + conclusion)
     # ─────────────────────────────────────────────────────────────
-
-    def prove(self,
-              formula: Formula,
-              qdepth: int = 3,
-              equality : int = 6) -> Tuple[bool, List[List[Notated]], List[bool]]:
-        
-        self._reset_sko()
-        self._reset_reflex_seen()
-        self._reset_terms_in_branch()
-        root = self._make_notated([], (Operation.NEG, formula))
-        tableau = self._expand([[root]], qdepth, equality)
-        
-        branch_state = self._closed(tableau)
-        if all(branch_state):
-            #print(f"Proof found at Q-depth {qdepth}")
-            return (True, tableau, branch_state)
-        else:
-            #print(f"No proof at Q-depth {qdepth}")
-            return (False, tableau, branch_state)
             
-    def prove_with_premises(self,
-                            premises: List[Formula], 
-                            conclusion: Formula,
-                            qdepth: int = 3,
-                            equality: int = 6) -> Tuple[bool, List[List[Notated]]]:
+    def prove(self,
+                premises: List[Formula], 
+                conclusion: Formula,
+                qdepth: int = 3,
+                equality: int = 6) -> Tuple[bool, List[List[Notated]]]:
         """
         premises  (S) 가 주어졌을 때,
         결론 conclusion (X)이  Tableau 상에서 따르는지(S ⊢ X) 확인.
@@ -462,9 +443,5 @@ class Tableau:
         root_branch = self._build_initial_branch(premises, conclusion)
         tableau = self._expand([root_branch], qdepth, equality) # 기존 expand 사용
         branch_state = self._closed(tableau)
-        if all(branch_state):
-            #print(f"⊢  증명 성공   (Q-depth={qdepth})")
-            return (True, tableau, branch_state)
-        else:
-            #print(f"⊢  증명 실패   (Q-depth={qdepth} 까지)")
-            return (False, tableau, branch_state)
+        none_closed_branches = [branch for is_closed, branch in zip(branch_state, tableau) if is_closed is False]
+        return (all(branch_state), none_closed_branches)

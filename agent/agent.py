@@ -1,4 +1,6 @@
-import uuid
+import uuid,sys 
+sys.path.append(".")
+from auto_prove.interpreter import pre_modification_fol_interpreter
 from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_ollama import OllamaEmbeddings
@@ -11,7 +13,7 @@ from langgraph.graph.message import add_messages
 from langgraph.store.base import BaseStore, SearchItem
 from langgraph.types import Command, interrupt
 from agent.toolkits import Tools
-from auto_prove.tableau import prove_with_premises
+from auto_prove.tableau import Tableau
 from auto_prove import Formula, Notated
 
 
@@ -64,6 +66,7 @@ class ATPagent:
                  ,fol_translate_model = None
                  ,embeddings=None
                  ,fields: List[str] = []
+                 ,prove_system = Tableau()
                  ,fol_strict_mode: bool = False):
         
         if len(tools) > 0:
@@ -101,6 +104,7 @@ class ATPagent:
         self.checkpointer = MemorySaver()
         self.graph_builder = StateGraph(state_schema=State)
         self.graph = self._build()
+        self.prove_system = prove_system
         
     def _init_context(self, state : State):
         new_history = []
@@ -108,7 +112,6 @@ class ATPagent:
             new_history.append(self.tools.get_template(self.system_prompt))
         else:
             new_history.append(self.system_prompt)
-            
         return {"history" : new_history}
     
     def _retrive_long_term_memory(self, namespace: str ,query: str , limit: int, store:BaseStore)-> list[SearchItem]: 
@@ -118,20 +121,60 @@ class ATPagent:
         store.put((self.user_id,namespace),str(uuid.uuid4()),value)
         
         
-    def _formal_language_converter(self,sentance : str) -> Union[Formula,str]:
-        
-        def _converter(formal_sentance:str) -> Formula:
-            pass
-        
-        result = self.fol_translate_model.invoke([HumanMessage(sentance)]).result 
+    def _formal_language_converter(self,fol_sentance : str) -> Union[str,Tuple[List[Formula], Formula]]:
+        _converter = pre_modification_fol_interpreter
+        result = self.fol_translate_model.invoke([HumanMessage(fol_sentance)]).result 
         if isinstance(result,NoneFOLMessageResponse):
             return result.answer 
         
         return _converter(result.answer)
-                    
     
-    def _analisys_terminologys(self, branches: List[List[Notated]]) -> Tuple[bool,List[str]]:
+    def _analisys_predicates(self, branches: List[List[Notated]]) -> Tuple[bool,List[str]]:
         pass
+    
+    def _core_model(self,state:State):
+        if isinstance(state["history"][-1],HumanMessage) and state["history"][-1].content == self.end_signal:
+            return Command(goto=END)
+        if self.chat_model is None:
+            raise ChatModelNoneException
+        if len(state["history"]) >= 6 and any([isinstance(message,HumanMessage) for message in state["history"][-5:]]):
+            user_message = interrupt("hard_to_solve")
+            response = self.chat_model.invoke([HumanMessage(user_message)]).result
+        else:
+            response = self.chat_model.invoke([state["history"][-1]]).result
+        if isinstance(response,ToolCallResponse):
+            tool_call_results = "\n".join([f"{k} = {v}" for k,v in self.tools.tools_calling(response.tools)])
+            return Command(goto="core_model", update = {"history": [SystemMessage(tool_call_results)]})
+            
+        return {"history": [AIMessage(response.answer)]}
+    
+    def _auto_prove(self,state:State):
+        fol_formula = self._formal_language_converter(state["history"][-1].content)
+        if isinstance(fol_formula,str):
+            pass 
+        else:
+            premises,goal = fol_formula
+            premises = premises + state["premises"]
+            is_proved, none_closed_branches = self.prove_system.prove(premises=premises, conclusion=goal)
+            analisys_result = self._analisys_predicates(none_closed_branches)
+        if is_proved or analisys_result[0]:
+            user_question = interrupt(state["history"][-1].content)
+            return {"history" : [HumanMessage(user_question)]}
+        
+        return {"history" : [SystemMessage("\n".join(analisys_result[1]))]}
+
+    def _build(self):
+        self.graph_builder.add_node("init",self._init_context)
+        self.graph_builder.add_node("core_model",self._core_model)
+        self.graph_builder.add_node("auto_prove",self._auto_prove)
+        self.graph_builder.add_edge(START,"init")
+        self.graph_builder.add_edge("init","core_model")
+        self.graph_builder.add_edge("core_model","auto_prove")
+        self.graph_builder.add_edge("core_model","auto_prove")
+        self.graph_builder.add_edge("persona_manager","summarize")
+       
+        
+        return self.graph_builder.compile(checkpointer=self.checkpointer,store=self.memory)
     
     def set_fol_strict_mode(self,mode:bool):
         self.fol_strict_mode = mode
@@ -162,49 +205,3 @@ class ATPagent:
         for event in self.graph.stream(query, stream_mode="updates", config=config):
             #interrupt_message = event['__interrupt__']
             yield event
-            
-    def _core_model(self,state:State):
-        
-        if isinstance(state["history"][-1],HumanMessage) and state["history"][-1].content == self.end_signal:
-            return Command(goto=END)
-        
-        if self.chat_model is None:
-            raise ChatModelNoneException
-        
-        if len(state["history"]) >= 6 and any([isinstance(message,HumanMessage) for message in state["history"][-5:]]):
-            user_message = interrupt("hard_to_solve")
-            response = self.chat_model.invoke([HumanMessage(user_message)]).result
-        else:
-            response = self.chat_model.invoke([state["history"][-1]]).result
-            
-        if isinstance(response,ToolCallResponse):
-            tool_call_results = "\n".join([f"{k} = {v}" for k,v in self.tools.tools_calling(response.tools)])
-            return Command(goto="core_model", update = {"history": [SystemMessage(tool_call_results)]})
-            
-        return {"history": [AIMessage(response.answer)]}
-    
-    def _auto_prove(self,state:State):
-        conclusion = self._formal_language_converter(state["history"][-1].content)
-        result = prove_with_premises(premises=state["premises"], conclusion= conclusion)
-        
-        none_closed_branches = [branch for is_closed, branch in zip(result[2], result[1]) if is_closed is False]
-        analisys_result = self._analisys_terminologys(none_closed_branches)
-        
-        if result[0] or analisys_result[0]:
-            user_question = interrupt(state["history"][-1].content)
-            return {"history" : [HumanMessage(user_question)]}
-        
-        return {"history" : [SystemMessage("\n".join(analisys_result[1]))]}
-        
-    def _build(self):
-        self.graph_builder.add_node("init",self._init_context)
-        self.graph_builder.add_node("core_model",self._core_model)
-        self.graph_builder.add_node("auto_prove",self._auto_prove)
-        self.graph_builder.add_edge(START,"init")
-        self.graph_builder.add_edge("init","core_model")
-        self.graph_builder.add_edge("core_model","auto_prove")
-        self.graph_builder.add_edge("core_model","auto_prove")
-        self.graph_builder.add_edge("persona_manager","summarize")
-       
-        
-        return self.graph_builder.compile(checkpointer=self.checkpointer,store=self.memory)

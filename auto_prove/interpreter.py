@@ -160,7 +160,3 @@ def pre_modification_fol_interpreter(fol:str) -> Tuple[List[Formula], Formula]:
     
     goal,_ = _formula(fol)
     return ([], _pre_modification(goal))
-
-
-if __name__ == "__main__":
-    print(pre_modification_fol_interpreter("P(a),  ∀x( P(x) → Q(x) ) ⊢ Q(a)"))
