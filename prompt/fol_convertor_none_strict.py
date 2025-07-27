@@ -8,6 +8,7 @@ Guidelines:
 - Use your best effort to formalize the sentence.
 - If and only if the sentence is truly non-logical or cannot be meaningfully formalized, respond with:
   NOT_FOL: <brief reason>
+- you must have check that your answer is collect or not think step by step 
 
 Output Format:
 - If you succeed, respond as:

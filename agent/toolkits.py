@@ -1,35 +1,12 @@
-
 import inspect, re, json5, json
 from typing import List, Callable, Any
-
+from prompt.toolkit import PROMPT
 
 class Tools:
     def __init__(self,tools: List[Callable[...,Any]]):
         
         self.tools :List[Callable[...,Any]]  = tools
-        self.system_prompt_template : str = """
-        In this environment llm model can access to a set of tools llm model can use to answer the user's question.
-        if llm model can answer the user's question llm model has access to a set of tools to find a profit tools
-
-        String and scalar parameters should be specified as is, while lists and objects should use JSON format. Note that spaces for string values are not stripped. The output is not expected to be valid XML and is parsed with regular expressions.
-        Here are the functions available in JSONSchema format:
-        
-        {{ TOOL DEFINITIONS IN JSON SCHEMA }}
-
-        Example when you need to call tools:
-        <function_call>[{"function": {"name": "name of function", "arguments": { "arg1": "value1" }}}]</function_call>
-        
-        If llm model decides that llm model needs to call one or more tools to answer, you should pass the tool request as a list in the following format:
-        <function_call>[{"function": {"name": "name of function", "arguments": { "arg1": "value1" }}}, {"function": {"name": "name of function2", "arguments": { "arg1": "value1",   "arg2": "value2"}}}]</function_call>
-        
-
-        additional limitation condition when you answer: 
-        {{ USER SYSTEM PROMPT }}
-        
-        If you don't know how to answer a question, you can ask for help.
-        
-        """
-        
+        self.system_prompt_template : str = PROMPT
         self.tool_scripts : List[dict] = [self._generate_function_description(tool) for tool in self.tools]
         self.functions : dict = {function["function"]["name"]: tool for function,tool in zip(self.json_tool_scripts,self.tools) }
         

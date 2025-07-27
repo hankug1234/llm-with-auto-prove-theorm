@@ -5,7 +5,7 @@ from auto_prove.tableau import Tableau
 
 def test_prove_with_premises():
     tableau_prover = Tableau()
-    prove_with_premises = tableau_prover.prove_with_premises
+    prove_with_premises = tableau_prover.prove
     
     # -------- 2 / 6 / 7 -------------- 증명 실패 여야 함
     

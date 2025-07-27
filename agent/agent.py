@@ -1,6 +1,6 @@
 import uuid,sys 
 sys.path.append(".")
-from auto_prove.interpreter import pre_modification_fol_interpreter
+from auto_prove.interpreter import pre_modification_fol_interpreter, pre_modification_fol2sentance
 from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_ollama import OllamaEmbeddings
@@ -14,7 +14,12 @@ from langgraph.store.base import BaseStore, SearchItem
 from langgraph.types import Command, interrupt
 from agent.toolkits import Tools
 from auto_prove.tableau import Tableau
-from auto_prove import Formula, Notated
+from auto_prove import Formula, Notated, Operation, operation2string
+from prompt.enhanced_request_by_none_closed_branches import PROMPT as enhanced_request
+from prompt.fol_convertor_strict import PROMPT as fol_convertor_strict 
+from prompt.fol_convertor_none_strict import PROMPT as fol_convertor_none_strict
+from prompt.agent_modelfile import PROMPT as agent_modelfile
+
 
 
 def add(a: List[Any], b: List[Any]):
@@ -54,13 +59,22 @@ class TranslateResponse(BaseModel):
 class State(TypedDict):
     history: Annotated[list[AnyMessage], add_messages]
     premises: Annotated[list[Formula], add]
+    system_instruction: SystemMessage
   
 
 class ATPagent:
-    def __init__(self,
-                 user_id : str = "admin",
-                 end_signal : str = "kill_9",
-                 system_prompt : str =""
+    def __init__(self
+                 ,user_id : str = "admin"
+                 ,end_signal : str = "kill"
+                 ,user_instruction : dict = {
+                    "{{CONCEPT}}" : "",
+                    "{{USER_INSTRUCTION}}":"",
+                    "{{INPUT_FORMAT}}":"",
+                    "{{OUTPUT_FORMAT}}":"",
+                    "{{RULES}}":"",
+                    "{{EXAMPLES}}":""
+                 }
+                 ,max_attemption : int = 3
                  ,tools : List[Callable] =[] 
                  ,chat_model = None
                  ,fol_translate_model = None
@@ -74,11 +88,9 @@ class ATPagent:
         else:
             self.tools = None 
         self.end_signal = end_signal
-        self.system_prompt = system_prompt + """
-                 you must have check that your answer is collect or not
-                 think step by step 
-                 """
         self.user_id = user_id
+        self.max_attemption = max_attemption
+        self.user_instruction = user_instruction
         
         if embeddings is None:
             embeddings = OllamaEmbeddings(model="llama3")
@@ -88,7 +100,10 @@ class ATPagent:
             
         if fol_translate_model is None:
             fol_translate_model = ChatOllama(model="gemma3:12b").with_structured_output(TranslateResponse,method="json_schema")
-            
+        
+        if chat_model is None:
+            raise ChatModelNoneException
+        
         self.chat_model = chat_model
         self.embeddings = embeddings 
         self.fol_translate_model = fol_translate_model
@@ -99,20 +114,28 @@ class ATPagent:
         "fields":fields
         })
         
-        self.set_fol_strict_mode(fol_strict_mode)
+        self.set_fol_translater_mode(fol_strict_mode)
         
         self.checkpointer = MemorySaver()
         self.graph_builder = StateGraph(state_schema=State)
         self.graph = self._build()
         self.prove_system = prove_system
-        
+    
+    def _make_agent_model(self):
+        return agent_modelfile\
+               .replace("{{CONCEPT}}",self.user_instruction["{{CONCEPT}}"])\
+               .replace("{{USER_INSTRUCTION}}",self.user_instruction["{{USER_INSTRUCTION}}"])\
+               .replace("{{INPUT_FORMAT}}",self.user_instruction["{{INPUT_FORMAT}}"])\
+               .replace("{{OUTPUT_FORMAT}}",self.user_instruction["{{OUTPUT_FORMAT}}"])\
+               .replace("{{RULES}}",self.user_instruction["{{RULES}}"])\
+               .replace("{{EXAMPLES}}",self.user_instruction["{{EXAMPLES}}"])\
+    
     def _init_context(self, state : State):
-        new_history = []
         if self.tools:
-            new_history.append(self.tools.get_template(self.system_prompt))
+            system_instruction = SystemMessage(self.tools.get_template(self._make_agent_model()))
         else:
-            new_history.append(self.system_prompt)
-        return {"history" : new_history}
+            system_instruction = SystemMessage(self._make_agent_model())
+        return {"history" : [], "system_instruction" : system_instruction}
     
     def _retrive_long_term_memory(self, namespace: str ,query: str , limit: int, store:BaseStore)-> list[SearchItem]: 
         return store.search((self.user_id, namespace), query=query, limit=limit)
@@ -129,19 +152,33 @@ class ATPagent:
         
         return _converter(result.answer)
     
+    def _current_user_request(history:list[AnyMessage]) -> HumanMessage: 
+        for message in history[::-1]:
+            if isinstance(message,HumanMessage):
+                return message 
+        return None
+            
     def _analisys_predicates(self, branches: List[List[Notated]]) -> Tuple[bool,List[str]]:
-        pass
-    
+        branches = [[pre_modification_fol2sentance(formula) for formula in branch[1]] for branch in branches]
+        branches = [ f"{i}. {operation2string(Operation.AND)} ".join(branch) for i,branch in enumerate(branches) ]
+        branches = '\n'.join(branches)
+        
+        return enhanced_request\
+        .replace("{{ORIGINAL_STATEMENT}}","")\
+        .replace("{{OPEN_BRANCHES}}",branches)
+        
+        
     def _core_model(self,state:State):
         if isinstance(state["history"][-1],HumanMessage) and state["history"][-1].content == self.end_signal:
             return Command(goto=END)
-        if self.chat_model is None:
-            raise ChatModelNoneException
-        if len(state["history"]) >= 6 and any([isinstance(message,HumanMessage) for message in state["history"][-5:]]):
-            user_message = interrupt("hard_to_solve")
+        
+        if len(state["history"]) >=self.max_attemption\
+            and not any([isinstance(message,HumanMessage) for message in state["history"][self.max_attemption:]]):
+            user_message = interrupt("fail")
             response = self.chat_model.invoke([HumanMessage(user_message)]).result
         else:
             response = self.chat_model.invoke([state["history"][-1]]).result
+            
         if isinstance(response,ToolCallResponse):
             tool_call_results = "\n".join([f"{k} = {v}" for k,v in self.tools.tools_calling(response.tools)])
             return Command(goto="core_model", update = {"history": [SystemMessage(tool_call_results)]})
@@ -150,6 +187,7 @@ class ATPagent:
     
     def _auto_prove(self,state:State):
         fol_formula = self._formal_language_converter(state["history"][-1].content)
+        
         if isinstance(fol_formula,str):
             pass 
         else:
@@ -157,11 +195,13 @@ class ATPagent:
             premises = premises + state["premises"]
             is_proved, none_closed_branches = self.prove_system.prove(premises=premises, conclusion=goal)
             analisys_result = self._analisys_predicates(none_closed_branches)
+            
         if is_proved or analisys_result[0]:
             user_question = interrupt(state["history"][-1].content)
             return {"history" : [HumanMessage(user_question)]}
         
         return {"history" : [SystemMessage("\n".join(analisys_result[1]))]}
+
 
     def _build(self):
         self.graph_builder.add_node("init",self._init_context)
@@ -175,15 +215,13 @@ class ATPagent:
        
         
         return self.graph_builder.compile(checkpointer=self.checkpointer,store=self.memory)
-    
-    def set_fol_strict_mode(self,mode:bool):
-        self.fol_strict_mode = mode
+
+    def set_fol_translater_mode(self,strict:bool):
+        self.fol_strict_mode = strict
         if self.fol_strict_mode:
-            from prompt.fol_convertor_strict import PROMPT
-            self.fol_translate_prompt = PROMPT 
+            self.fol_translater_prompt = fol_convertor_strict
         else: 
-            from prompt.fol_convertor_none_strict import PROMPT 
-            self.fol_translate_prompt = PROMPT 
+            self.fol_translater_prompt = fol_convertor_none_strict
     
     async def async_excute(self, query :Dict[str,Any], thread_id: str = "1"):
         config = {

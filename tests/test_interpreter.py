@@ -3,7 +3,7 @@ sys.path.append(".")
 from auto_prove import Function, Var, Operation, Predicate, Constant
 
 def test_interpreter():
-    from auto_prove.interpreter import pre_modification_fol_interpreter as interpreter  
+    from auto_prove.interpreter import pre_modification_fol_interpreter as interpreter, pre_modification_fol2sentance as de_interpreter  
      # 1. 기본 유효   P(a),  ∀x( P(x) → Q(x) ) ⊢ Q(a)
     prem1 = Predicate("P", [Constant("a")])
     prem2 = (Operation.ALL, Var("x"),
@@ -14,6 +14,7 @@ def test_interpreter():
     premises, target = interpreter("P(a), ∀x( P(x) → Q(x) ) ⊢ Q(a)")
     assert premises == [prem1, prem2]
     assert target == goal
+    print()
     # ----------------------------------------------
     # 2. 동일 변수 반복 (무효)  ∀x P(x) ⊢ Q(a)
     prem1 = (Operation.ALL, Var("x"), Predicate("P", [Var("x")]))

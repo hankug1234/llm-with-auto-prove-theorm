@@ -18,6 +18,22 @@ _logic_operator_mapping = {
     '∃': 'some'
 }
 
+_logic_operator_mapping_reversed = {
+    'neg': '¬',
+    'and': '∧',
+    'or': '∨',
+    'imp': '→',
+    'revimp': '←',
+    'uparrow': '↑',
+    'downarrow': '↓',
+    'notimp': '¬→',
+    'notrevimp': '¬←',
+    'and_imp_bi': '↔',
+    'equal': '=',
+    'all': '∀',
+    'some': '∃'
+}
+
 class Predicate:
     def __init__(self, name: str, args: List['Term']):
         self.name = name
@@ -140,6 +156,9 @@ def operation(logic_operation: str) -> Operation:
     except Exception as e:
         print(e)
         return None
+
+def operation2string(op:Operation)->str:
+    return _logic_operator_mapping_reversed[op.value]
 
 def is_operation(logic_operation:str)->bool:
     return logic_operation in _logic_operator_mapping.keys()

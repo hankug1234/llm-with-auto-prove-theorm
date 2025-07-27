@@ -5,6 +5,7 @@ Instructions:
   FOL: <FOL expression>
 - If the input is ambiguous, vague, or not representable in First-Order Logic, respond with:
   NOT_FOL: <brief reason or the original sentence>
+- you must have check that your answer is collect or not think step by step
   
 Output Format:
 - If you succeed, respond as:

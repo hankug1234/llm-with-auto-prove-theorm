@@ -1,4 +1,5 @@
 from auto_prove import Formula, Constant, Var, Function, Predicate, Operation, operation, is_operation, is_atom, is_term, is_formula
+from auto_prove import operation2string, Term
 from collections import deque 
 from typing import Tuple,List,Union
 import re,sys
@@ -8,6 +9,11 @@ sys.setrecursionlimit(10000)
 _variation_pattern = re.compile(r'^[x-z][0-9]*$')
 
 class String2FormulaConvertException(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
+        
+class Formula2StringConvertException(Exception):
     def __init__(self, message):
         super().__init__(message)
         self.message = message
@@ -107,11 +113,11 @@ def _pre_modification(formula: Formula)->Formula:
                             temp = (neg,temp)
                         temp = (f,_pre_modification(temp))
                     else:    
-                        raise String2FormulaConvertException("convert error")
+                        raise String2FormulaConvertException("string to formula convert error")
             else:
                 temp = _pre_modification(f)
     if temp is None:
-        raise String2FormulaConvertException("convert error")
+        raise String2FormulaConvertException("string to formula convert error")
     
     return temp
 
@@ -160,3 +166,29 @@ def pre_modification_fol_interpreter(fol:str) -> Tuple[List[Formula], Formula]:
     
     goal,_ = _formula(fol)
     return ([], _pre_modification(goal))
+
+def _term2string(term:Term)->str:
+    pass
+
+def _formula2string(formula:Formula)->str:
+    pass
+
+def pre_modification_fol2sentance(formula: Formula)->str:
+    if is_atom(formula):
+        return _formula2string(formula)
+    else:
+        if isinstance(formula,tuple):
+            op = formula[0]
+            if op.is_quantifiers():
+                 var = _term2string(formula[1])
+                 sub_formula1 = pre_modification_fol2sentance(formula[2])
+                 return f"{operation2string(op)}{var} {sub_formula1}"
+            elif op.is_unary_ops():
+                sub_formula1 = pre_modification_fol2sentance(formula[1])
+                return f"{operation2string(op)}{sub_formula1}"
+            else:
+                sub_formula1 = pre_modification_fol2sentance(formula[1])
+                sub_formula2 = pre_modification_fol2sentance(formula[2])
+                return  f"{sub_formula1} {operation2string(op)} {sub_formula2}"
+    raise Formula2StringConvertException("formula to string convert error")
+            
