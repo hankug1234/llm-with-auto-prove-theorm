@@ -25,9 +25,12 @@ from prompt.agent_modelfile import PROMPT as agent_modelfile
 def add(a: List[Any], b: List[Any]):
     return a + b
     
-
 class ChatModelNoneException(Exception):
     def __init__(self,message="chat model is None"):
+        super().__init__(message)
+        
+class FolConvertFailException(Exception):
+    def __init__(self,message="fol convert fail"):
         super().__init__(message)
 
 class ToolCallResponse(BaseModel):
@@ -59,7 +62,7 @@ class TranslateResponse(BaseModel):
 class State(TypedDict):
     history: Annotated[list[AnyMessage], add_messages]
     premises: Annotated[list[Formula], add]
-    system_instruction: SystemMessage
+    user_instruction: SystemMessage
   
 
 class ATPagent:
@@ -74,7 +77,7 @@ class ATPagent:
                     "{{RULES}}":"",
                     "{{EXAMPLES}}":""
                  }
-                 ,max_attemption : int = 3
+                 ,max_attemption : int = 5
                  ,tools : List[Callable] =[] 
                  ,chat_model = None
                  ,fol_translate_model = None
@@ -132,10 +135,10 @@ class ATPagent:
     
     def _init_context(self, state : State):
         if self.tools:
-            system_instruction = SystemMessage(self.tools.get_template(self._make_agent_model()))
+            user_instruction = SystemMessage(self.tools.get_template(self._make_agent_model()))
         else:
-            system_instruction = SystemMessage(self._make_agent_model())
-        return {"history" : [], "system_instruction" : system_instruction}
+            user_instruction = SystemMessage(self._make_agent_model())
+        return {"history" : [], "user_instruction" : user_instruction}
     
     def _retrive_long_term_memory(self, namespace: str ,query: str , limit: int, store:BaseStore)-> list[SearchItem]: 
         return store.search((self.user_id, namespace), query=query, limit=limit)
@@ -144,11 +147,11 @@ class ATPagent:
         store.put((self.user_id,namespace),str(uuid.uuid4()),value)
         
         
-    def _formal_language_converter(self,fol_sentance : str) -> Union[str,Tuple[List[Formula], Formula]]:
+    def _formal_language_converter(self,fol_sentance : str) -> Tuple[List[Formula], Formula]:
         _converter = pre_modification_fol_interpreter
-        result = self.fol_translate_model.invoke([HumanMessage(fol_sentance)]).result 
+        result = self.fol_translate_model.invoke([SystemMessage(self.fol_translater_prompt),HumanMessage(fol_sentance)]).result 
         if isinstance(result,NoneFOLMessageResponse):
-            return result.answer 
+            raise FolConvertFailException()
         
         return _converter(result.answer)
     
@@ -158,13 +161,22 @@ class ATPagent:
                 return message 
         return None
             
-    def _analisys_predicates(self, branches: List[List[Notated]]) -> Tuple[bool,List[str]]:
+    def _enhaned_request(self, branches: List[List[Notated]], request:str,\
+        answer:str, premises:List[Formula], goal:Formula) -> str:
+        
         branches = [[pre_modification_fol2sentance(formula) for formula in branch[1]] for branch in branches]
         branches = [ f"{i}. {operation2string(Operation.AND)} ".join(branch) for i,branch in enumerate(branches) ]
         branches = '\n'.join(branches)
         
+        target = pre_modification_fol2sentance(goal)
+        premises = [f" {i}. {pre_modification_fol2sentance(premise)}" for i,premise in enumerate(premises)]
+        premises = "\n".join(premises)
+        
         return enhanced_request\
-        .replace("{{ORIGINAL_STATEMENT}}","")\
+        .replace("{{USER_REQUEST}}",f"- {request}")\
+        .replace("{{LLM_ANSWER}}",f"- {answer}")\
+        .replace("{{TARGET}}",f"- {target}")\
+        .replace("{{PREMISES}}",premises)\
         .replace("{{OPEN_BRANCHES}}",branches)
         
         
@@ -173,11 +185,11 @@ class ATPagent:
             return Command(goto=END)
         
         if len(state["history"]) >=self.max_attemption\
-            and not any([isinstance(message,HumanMessage) for message in state["history"][self.max_attemption:]]):
+            and not any([isinstance(message,HumanMessage) for message in state["history"][-self.max_attemption:]]):
             user_message = interrupt("fail")
-            response = self.chat_model.invoke([HumanMessage(user_message)]).result
+            response = self.chat_model.invoke([state["user_instruction"],HumanMessage(user_message)]).result
         else:
-            response = self.chat_model.invoke([state["history"][-1]]).result
+            response = self.chat_model.invoke([state["user_instruction"],state["history"][-1]]).result
             
         if isinstance(response,ToolCallResponse):
             tool_call_results = "\n".join([f"{k} = {v}" for k,v in self.tools.tools_calling(response.tools)])
@@ -186,21 +198,26 @@ class ATPagent:
         return {"history": [AIMessage(response.answer)]}
     
     def _auto_prove(self,state:State):
-        fol_formula = self._formal_language_converter(state["history"][-1].content)
-        
-        if isinstance(fol_formula,str):
-            pass 
-        else:
+        try:
+            fol_formula = self._formal_language_converter(state["history"][-1].content)
+            origin_answer = state["history"][-1].content
+            origin_request = self._current_user_request(state["history"])
+            
             premises,goal = fol_formula
             premises = premises + state["premises"]
             is_proved, none_closed_branches = self.prove_system.prove(premises=premises, conclusion=goal)
-            analisys_result = self._analisys_predicates(none_closed_branches)
             
-        if is_proved or analisys_result[0]:
+            if not is_proved:
+                request = self._enhaned_request(none_closed_branches,origin_request,origin_answer,premises,goal)
+                return {"history" : [SystemMessage("\n".join(request[1]))]}        
+                
             user_question = interrupt(state["history"][-1].content)
             return {"history" : [HumanMessage(user_question)]}
-        
-        return {"history" : [SystemMessage("\n".join(analisys_result[1]))]}
+            
+        except FolConvertFailException:
+            pass 
+        except Exception:
+            pass 
 
 
     def _build(self):

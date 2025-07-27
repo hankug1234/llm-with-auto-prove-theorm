@@ -1,21 +1,40 @@
 PROMPT = """
 
-You previously attempted to reason about the following logical statement:
+You previously attempted to answer the following user query:
 
-    {{ORIGINAL_STATEMENT}}
+USER REQUEST:
+{{USER_REQUEST}}
 
-However, according to the tableau proof method, this argument is not fully valid. The following are the open branches from the attempted tableau proof—these represent possible models where the argument fails (i.e., no contradiction was found):
+YOUR PREVIOUS ANSWER:
+{{LLM_ANSWER}}
 
-    {{OPEN_BRANCHES}}
+Based on your answer, the following formalization in first-order logic (FOL) was derived:
 
-These open branches indicate that your previous reasoning may have included a logical mistake, omission, or an invalid assumption.
+FOL FORMULA (from your answer):
+{{TARGET}}
 
-Your tasks:
+The argument was evaluated using the tableau proof method with the following premises:
 
-1. Analyze the open branches and identify any flaws or gaps in your previous reasoning.
-2. Revise your original argument or conclusion if necessary.
-3. Justify your revised answer with a clear logical explanation or example, ideally reflecting the structure of the open branches.
+FOL PREMISES:
+{{PREMISES}}
 
-⚠️ Important: Do not simply repeat your original answer. You must acknowledge and respond to the implications of the open branches.
+However, the tableau procedure revealed that the argument is **not fully valid** — some branches remain **open**. These open branches represent possible interpretations under which your conclusion does not logically follow from the premises:
+
+OPEN BRANCHES (from tableau proof):
+{{OPEN_BRANCHES}}
+
+These open branches suggest that your previous reasoning may include logical gaps, invalid inferences, or unsupported assumptions.
+
+---
+
+### 🔧 Your Tasks:
+
+1. **Review** the open branches and analyze whether your answer failed to account for them.
+2. **Revise** your original answer if needed, addressing the logical gaps or false assumptions.
+3. **Justify** your revised conclusion with a clear logical explanation or example that is consistent with first-order logic.
+
+**⚠️ Important:**  
+Do not simply restate your previous answer. You must explicitly address the open branches and correct any reasoning errors or oversights they reveal.
+
 
 """
