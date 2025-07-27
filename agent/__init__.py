@@ -20,7 +20,7 @@ from prompt.enhanced_request_by_none_closed_branches import PROMPT as enhanced_r
 from prompt.fol_convertor_strict import PROMPT as fol_convertor_strict 
 from prompt.fol_convertor_none_strict import PROMPT as fol_convertor_none_strict
 from prompt.agent_modelfile import PROMPT as agent_modelfile
-
+import threading
 
 
 def add(a: List[Any], b: List[Any]):
@@ -80,6 +80,26 @@ class Return(TypedDict):
     ok: bool 
     value: str
     error: Exception 
+    
+class Session:
+    def __init__(self, thread_id: str, sessions: dict[str, Callable], lock: threading.Lock):
+        self.thread_id = thread_id
+        self.lock = lock
+        self.__sessions = sessions
+    
+    def __repr__(self):
+        return f"Session(thread_id={self.thread_id})"
+    
+    def __str__(self):
+        return f"Session(thread_id={self.thread_id})"
+    
+    def send(self, query: str):
+        try:
+            return self.__sessions[self.thread_id].send(query)  # yield에 값 전달 후 다음 yield까지 실행
+        except StopIteration:
+            with self.lock:
+                del self.__sessions[self.thread_id]
+            return None
 
 class ATPagent:
     def __init__(self
@@ -140,6 +160,7 @@ class ATPagent:
         self.graph = self._build()
         self.prove_system = prove_system
         self.sessions = {}
+        self.lock = threading.Lock()
     
     def _make_agent_model(self):
         return agent_modelfile\
@@ -319,11 +340,5 @@ class ATPagent:
                 query = Command(resume=query)
         
         self.sessions[thread_id] = _session()
-        
-        def execute(query: str):
-            try:
-                return self.sessions[thread_id].send(query)  # yield에 값 전달 후 다음 yield까지 실행
-            except StopIteration:
-                return None
             
-        return execute
+        return Session(thread_id, self.sessions, self.lock)

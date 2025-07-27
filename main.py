@@ -15,7 +15,7 @@ if __name__ == "__main__":
     
     while True:
         user_input = input("사용자 입력")
-        response = session(user_input)
+        response = session.send(user_input)
         if response is None:
             break 
         else:
