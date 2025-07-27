@@ -1,3 +1,4 @@
+from enum import Enum
 import uuid,sys 
 sys.path.append(".")
 from auto_prove.interpreter import pre_modification_fol_interpreter, pre_modification_fol2sentance
@@ -24,6 +25,11 @@ from prompt.agent_modelfile import PROMPT as agent_modelfile
 
 def add(a: List[Any], b: List[Any]):
     return a + b
+
+class Mode(Enum):
+    NORMAL = "normal"
+    ENHANCED = "enhanced"
+    TOOL = "tool"
     
 class ChatModelNoneException(Exception):
     def __init__(self,message="chat model is None"):
@@ -31,6 +37,10 @@ class ChatModelNoneException(Exception):
         
 class FolConvertFailException(Exception):
     def __init__(self,message="fol convert fail"):
+        super().__init__(message)
+        
+class OverMaxAttemptionException(Exception):
+    def __init__(self,message="over max attemption"):
         super().__init__(message)
 
 class ToolCallResponse(BaseModel):
@@ -63,7 +73,13 @@ class State(TypedDict):
     history: Annotated[list[AnyMessage], add_messages]
     premises: Annotated[list[Formula], add]
     user_instruction: SystemMessage
-  
+    mode_count: dict = {Mode.ENHANCED : 0, Mode.TOOL : 0, Mode.NORMAL : 0}
+    mode: Mode = Mode.NORMAL
+
+class Return(TypedDict):
+    ok: bool 
+    value: str
+    error: Exception 
 
 class ATPagent:
     def __init__(self
@@ -138,7 +154,7 @@ class ATPagent:
             user_instruction = SystemMessage(self.tools.get_template(self._make_agent_model()))
         else:
             user_instruction = SystemMessage(self._make_agent_model())
-        return {"history" : [], "user_instruction" : user_instruction}
+        return {"history" : state["history"], "user_instruction" : user_instruction}
     
     def _retrive_long_term_memory(self, namespace: str ,query: str , limit: int, store:BaseStore)-> list[SearchItem]: 
         return store.search((self.user_id, namespace), query=query, limit=limit)
@@ -184,23 +200,39 @@ class ATPagent:
         if isinstance(state["history"][-1],HumanMessage) and state["history"][-1].content == self.end_signal:
             return Command(goto=END)
         
-        if len(state["history"]) >=self.max_attemption\
-            and not any([isinstance(message,HumanMessage) for message in state["history"][-self.max_attemption:]]):
-            user_message = interrupt("fail")
-            response = self.chat_model.invoke([state["user_instruction"],HumanMessage(user_message)]).result
-        else:
-            response = self.chat_model.invoke([state["user_instruction"],state["history"][-1]]).result
-            
-        if isinstance(response,ToolCallResponse):
-            tool_call_results = "\n".join([f"{k} = {v}" for k,v in self.tools.tools_calling(response.tools)])
-            return Command(goto="core_model", update = {"history": [SystemMessage(tool_call_results)]})
-            
-        return {"history": [AIMessage(response.answer)]}
+        mode_count = state["mode_count"]
+        mode = state["mode"]
+        response = None 
+        message = None
+        
+        try:
+            if mode_count[mode] > self.max_attemption and mode != Mode.NORMAL:
+                message = interrupt(Return(ok=False, error=OverMaxAttemptionException()))
+                response = self.chat_model.invoke([state["user_instruction"],HumanMessage(message)]).result
+            else:
+                message = state["history"][-1]
+                response = self.chat_model.invoke([state["user_instruction"],message]).result
+                
+            if isinstance(response,ToolCallResponse):
+                tool_call_results = "\n".join([f"{k} = {v}" for k,v in self.tools.tools_calling(response.tools)])
+                mode_count[Mode.ENHANCED] = 0
+                mode_count[Mode.TOOL] += 1
+                return Command(goto="core_model", update = {"history": [message,AIMessage(response.tools),SystemMessage(tool_call_results)]
+                                                            ,"mode":Mode.TOOL
+                                                            ,"mode_count" : mode_count})
+        except Exception as e:
+            return Command(goto=END) 
+        finally:
+            mode_count[Mode.ENHANCED] = 0
+            mode_count[Mode.TOOL] = 0
+            return {"history": [message,AIMessage(response.answer)],"mode": Mode.NORMAL}
     
     def _auto_prove(self,state:State):
+        error = None
+        origin_answer = state["history"][-1].content
+        mode_count = state["mode_count"]
         try:
             fol_formula = self._formal_language_converter(state["history"][-1].content)
-            origin_answer = state["history"][-1].content
             origin_request = self._current_user_request(state["history"])
             
             premises,goal = fol_formula
@@ -209,15 +241,27 @@ class ATPagent:
             
             if not is_proved:
                 request = self._enhaned_request(none_closed_branches,origin_request,origin_answer,premises,goal)
-                return {"history" : [SystemMessage("\n".join(request[1]))]}        
-                
-            user_question = interrupt(state["history"][-1].content)
-            return {"history" : [HumanMessage(user_question)]}
+                mode_count[Mode.ENHANCED] += 1
+                mode_count[Mode.TOOL] = 0
+                return {"history" : [SystemMessage("\n".join(request[1]))]
+                        ,"mode": Mode.ENHANCED
+                        ,"mode_count" : mode_count}        
             
-        except FolConvertFailException:
-            pass 
-        except Exception:
-            pass 
+        except FolConvertFailException as e:
+            error = e
+        except Exception as e:
+            error = e 
+        finally:
+            if error is None:
+                response = Return(ok=True,value=origin_answer)
+            else:
+                response = Return(ok=False,value=origin_answer ,error=error)
+            user_question = interrupt(response)
+            mode_count[Mode.ENHANCED] = 0
+            mode_count[Mode.TOOL] = 0
+            return {"history" : [HumanMessage(user_question)]
+                    ,"mode": Mode.NORMAL
+                    ,"mode_count" : mode_count}
 
 
     def _build(self):
@@ -227,9 +271,7 @@ class ATPagent:
         self.graph_builder.add_edge(START,"init")
         self.graph_builder.add_edge("init","core_model")
         self.graph_builder.add_edge("core_model","auto_prove")
-        self.graph_builder.add_edge("core_model","auto_prove")
-        self.graph_builder.add_edge("persona_manager","summarize")
-       
+        self.graph_builder.add_edge("auto_prove","core_model")
         
         return self.graph_builder.compile(checkpointer=self.checkpointer,store=self.memory)
 
@@ -240,23 +282,23 @@ class ATPagent:
         else: 
             self.fol_translater_prompt = fol_convertor_none_strict
     
-    async def async_excute(self, query :Dict[str,Any], thread_id: str = "1"):
+    async def async_excute(self, query :str, thread_id: str = "1"):
         config = {
             "configurable" : {
                 "thread_id": thread_id
             }
         }
-
+        query = {"history":[HumanMessage(query)]}
         async for event in self.graph.astream(query, stream_mode="updates", config=config):
             yield event
     
-    def excute(self, query :Dict[str,Any], thread_id: str = "1"):
+    def excute(self, query :str, thread_id: str = "1"):
         config = {
             "configurable" : {
                 "thread_id": thread_id
             }
         }
-
+        query = {"history":[HumanMessage(query)]}
         for event in self.graph.stream(query, stream_mode="updates", config=config):
             #interrupt_message = event['__interrupt__']
             yield event
