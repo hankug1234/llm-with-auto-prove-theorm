@@ -73,8 +73,8 @@ class State(TypedDict):
     history: Annotated[list[AnyMessage], add_messages]
     premises: Annotated[list[Formula], add]
     user_instruction: SystemMessage
-    mode_count: dict = {Mode.ENHANCED : 0, Mode.TOOL : 0, Mode.NORMAL : 0}
-    mode: Mode = Mode.NORMAL
+    mode_count: dict
+    mode: Mode
 
 class Return(TypedDict):
     ok: bool 
@@ -163,6 +163,9 @@ class ATPagent:
         self.lock = threading.Lock()
     
     def _make_agent_model(self):
+        if self.user_instruction is None:
+            return ""
+        
         return agent_modelfile\
                .replace("{{CONCEPT}}",self.user_instruction["{{CONCEPT}}"])\
                .replace("{{USER_INSTRUCTION}}",self.user_instruction["{{USER_INSTRUCTION}}"])\
@@ -172,13 +175,15 @@ class ATPagent:
                .replace("{{EXAMPLES}}",self.user_instruction["{{EXAMPLES}}"])\
     
     def _init_context(self, state : State):
-        if self.user_instruction is None : 
-            return {"history" : state["history"], "user_instruction" : SystemMessage("")}
         if self.tools:
             user_instruction = SystemMessage(self.tools.get_template(self._make_agent_model()))
         else:
             user_instruction = SystemMessage(self._make_agent_model())
-        return {"history" : state["history"], "user_instruction" : user_instruction}
+        return {"history" : state["history"], 
+                "user_instruction" : user_instruction,
+                "mode_count" : {Mode.ENHANCED : 0, Mode.TOOL : 0, Mode.NORMAL : 0},
+                "mode" : Mode.NORMAL
+                }
     
     def _retrive_long_term_memory(self, namespace: str ,query: str , limit: int, store:BaseStore)-> list[SearchItem]: 
         return store.search((self.user_id, namespace), query=query, limit=limit)
@@ -335,11 +340,12 @@ class ATPagent:
             query = yield
             query = {"history":[HumanMessage(query)]}
             for event in graph.stream(query, stream_mode="updates", config=config):
-                response = event['__interrupt__']
-                
-                yield response
-                query = yield
-                query = Command(resume=query)
+                response = event.get('__interrupt__', None)
+                if response is not None:
+                    yield response
+                    query = yield
+                    query = Command(resume=query)
+                    
         session = make_session()
         next(session)
         self.sessions[thread_id] = session
