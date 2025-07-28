@@ -82,7 +82,7 @@ class Return(TypedDict):
     error: Exception 
     
 class Session:
-    def __init__(self, thread_id: str, sessions: dict[str, Callable], lock: threading.Lock):
+    def __init__(self, thread_id: str, sessions: dict[str, Any], lock: threading.Lock):
         self.thread_id = thread_id
         self.lock = lock
         self.__sessions = sessions
@@ -331,7 +331,7 @@ class ATPagent:
         }
         graph = self.graph 
         
-        def _session():
+        def make_session():
             query = yield
             query = {"history":[HumanMessage(query)]}
             for event in graph.stream(query, stream_mode="updates", config=config):
@@ -340,7 +340,8 @@ class ATPagent:
                 yield response
                 query = yield
                 query = Command(resume=query)
-        
-        self.sessions[thread_id] = next(_session())
+        session = make_session()
+        next(session)
+        self.sessions[thread_id] = session
             
         return Session(thread_id, self.sessions, self.lock)
