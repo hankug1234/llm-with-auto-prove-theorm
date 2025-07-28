@@ -172,6 +172,8 @@ class ATPagent:
                .replace("{{EXAMPLES}}",self.user_instruction["{{EXAMPLES}}"])\
     
     def _init_context(self, state : State):
+        if self.user_instruction is None : 
+            return {"history" : state["history"], "user_instruction" : SystemMessage("")}
         if self.tools:
             user_instruction = SystemMessage(self.tools.get_template(self._make_agent_model()))
         else:
@@ -317,10 +319,10 @@ class ATPagent:
     def get_sesesion(self):
         
         thread_id = None 
-        if len(self.sessions.keys) == 0:
+        if len(self.sessions.keys()) == 0:
             thread_id = str(0)
         else:
-            thread_id = str(max([int(key) for key in self.sessions.keys]) + 1)
+            thread_id = str(max([int(key) for key in self.sessions.keys()]) + 1)
         
         config = {
             "configurable" : {
@@ -333,12 +335,12 @@ class ATPagent:
             query = yield
             query = {"history":[HumanMessage(query)]}
             for event in graph.stream(query, stream_mode="updates", config=config):
-                #interrupt_message = event['__interrupt__']
-                #interrupt 처리 코드 추가 
-                yield event
+                response = event['__interrupt__']
+                
+                yield response
                 query = yield
                 query = Command(resume=query)
         
-        self.sessions[thread_id] = _session()
+        self.sessions[thread_id] = next(_session())
             
         return Session(thread_id, self.sessions, self.lock)
