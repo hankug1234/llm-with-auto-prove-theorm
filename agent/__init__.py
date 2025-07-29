@@ -97,6 +97,7 @@ class Session:
         try:
             return self.__sessions[self.thread_id].send(query)  # yield에 값 전달 후 다음 yield까지 실행
         except StopIteration:
+            print("iteration end")
             with self.lock:
                 del self.__sessions[self.thread_id]
             return None
@@ -235,7 +236,7 @@ class ATPagent:
     def _core_model(self,state:State):
         if isinstance(state["history"][-1],HumanMessage) and state["history"][-1].content == self.end_signal:
             print("meet end signal")
-            return Command(goto="end")
+            return Command(goto=END)
         
         mode_count = state["mode_count"]
         mode = state["mode"]
@@ -259,11 +260,11 @@ class ATPagent:
                                                             ,"mode_count" : mode_count})
         except Exception as e:
             print(f"core model : {e}")
-            return Command(goto="end") 
-        finally:
-            mode_count[Mode.ENHANCED] = 0
-            mode_count[Mode.TOOL] = 0
-            return {"history": [message,AIMessage(response.answer)],"mode": Mode.NORMAL, "mode_count" : mode_count}
+            return Command(goto=END) 
+        
+        mode_count[Mode.ENHANCED] = 0
+        mode_count[Mode.TOOL] = 0
+        return {"history": [message,AIMessage(response.answer)],"mode": Mode.NORMAL, "mode_count" : mode_count}
     
     def _auto_prove(self,state:State):
         error, is_proved = None, False
@@ -292,28 +293,23 @@ class ATPagent:
             error = e
             print(f"auto prove : {e}")
              
-        finally:
-            response = Return(ok=is_proved ,value=origin_answer, error=error)
-            user_question = interrupt(response)
-            mode_count[Mode.ENHANCED] = 0
-            mode_count[Mode.TOOL] = 0
-            return {"history" : [HumanMessage(user_question)]
-                    ,"mode": Mode.NORMAL
-                    ,"mode_count" : mode_count}
-
-    def end(self,state: State):
-        return {}
+        response = Return(ok=is_proved ,value=origin_answer, error=error)
+        user_question = interrupt(response)
+        mode_count[Mode.ENHANCED] = 0
+        mode_count[Mode.TOOL] = 0
+        return {"history" : [HumanMessage(user_question)]
+                ,"mode": Mode.NORMAL
+                ,"mode_count" : mode_count}
 
     def _build(self):
         self.graph_builder.add_node("init",self._init_context)
         self.graph_builder.add_node("core_model",self._core_model)
         self.graph_builder.add_node("auto_prove",self._auto_prove)
-        self.graph_builder.add_node("end",self.end)
         self.graph_builder.add_edge(START,"init")
         self.graph_builder.add_edge("init","core_model")
         self.graph_builder.add_edge("core_model","auto_prove")
         self.graph_builder.add_edge("auto_prove","core_model")
-        self.graph_builder.add_edge("end",END)
+        self.graph_builder.add_edge("core_model", END) 
         
         return self.graph_builder.compile(checkpointer=self.checkpointer,store=self.memory)
 
