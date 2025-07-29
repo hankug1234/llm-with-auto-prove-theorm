@@ -209,9 +209,16 @@ class ATPagent:
     def _enhaned_request(self, branches: List[List[Notated]], request:str,\
         answer:str, premises:List[Formula], goal:Formula) -> str:
         
-        branches = [[pre_modification_fol2sentance(formula) for formula in branch[1]] for branch in branches]
-        branches = [ f"{i}. {operation2string(Operation.AND)} ".join(branch) for i,branch in enumerate(branches) ]
-        branches = '\n'.join(branches)
+        branches = [[pre_modification_fol2sentance(notate[1]) for notate in branch] for branch in branches]
+        rows = []
+        for i, branch in enumerate(branches):
+            if len(branch) >= 2:
+                row = f" {operation2string(Operation.AND)} ".join(branch)
+                row = f"{i}. {row}"
+            else:
+                row = f"{i}. {row}"
+            rows.append(row)
+        branches = '\n'.join(rows)
         
         target = pre_modification_fol2sentance(goal)
         premises = [f" {i}. {pre_modification_fol2sentance(premise)}" for i,premise in enumerate(premises)]
@@ -227,7 +234,8 @@ class ATPagent:
         
     def _core_model(self,state:State):
         if isinstance(state["history"][-1],HumanMessage) and state["history"][-1].content == self.end_signal:
-            return Command(goto=END)
+            print("meet end signal")
+            return Command(goto="end")
         
         mode_count = state["mode_count"]
         mode = state["mode"]
@@ -235,13 +243,13 @@ class ATPagent:
         message = None
         
         try:
-            if mode_count[mode] > self.max_attemption and mode != Mode.NORMAL:
+            if mode != Mode.NORMAL and mode_count[mode] > self.max_attemption:
                 message = interrupt(Return(ok=False, error=OverMaxAttemptionException()))
-                response = self.chat_model.invoke([state["user_instruction"],HumanMessage(message)]).result
+                response = self.chat_model.invoke([state["user_instruction"],HumanMessage(message)])
             else:
                 message = state["history"][-1]
-                response = self.chat_model.invoke([state["user_instruction"],message]).result
-                
+                response = self.chat_model.invoke([state["user_instruction"],message])
+            response = response.result
             if isinstance(response,ToolCallResponse):
                 tool_call_results = "\n".join([f"{k} = {v}" for k,v in self.tools.tools_calling(response.tools)])
                 mode_count[Mode.ENHANCED] = 0
@@ -250,41 +258,42 @@ class ATPagent:
                                                             ,"mode":Mode.TOOL
                                                             ,"mode_count" : mode_count})
         except Exception as e:
-            return Command(goto=END) 
+            print(f"core model : {e}")
+            return Command(goto="end") 
         finally:
             mode_count[Mode.ENHANCED] = 0
             mode_count[Mode.TOOL] = 0
-            return {"history": [message,AIMessage(response.answer)],"mode": Mode.NORMAL}
+            return {"history": [message,AIMessage(response.answer)],"mode": Mode.NORMAL, "mode_count" : mode_count}
     
     def _auto_prove(self,state:State):
-        error = None
+        error, is_proved = None, False
         origin_answer = state["history"][-1].content
         mode_count = state["mode_count"]
         try:
-            fol_formula = self._formal_language_converter(state["history"][-1].content)
+            fol_formula = self._formal_language_converter(origin_answer)
             origin_request = self._current_user_request(state["history"])
-            
             premises,goal = fol_formula
             premises = premises + state["premises"]
             is_proved, none_closed_branches = self.prove_system.prove(premises=premises, conclusion=goal)
-            
+             
             if not is_proved:
                 request = self._enhaned_request(none_closed_branches,origin_request,origin_answer,premises,goal)
                 mode_count[Mode.ENHANCED] += 1
                 mode_count[Mode.TOOL] = 0
-                return {"history" : [SystemMessage("\n".join(request[1]))]
+                return {"history" : [SystemMessage(request)]
                         ,"mode": Mode.ENHANCED
                         ,"mode_count" : mode_count}        
-            
+             
         except FolConvertFailException as e:
             error = e
+            print(f"auto prove : {e}")
+            
         except Exception as e:
-            error = e 
+            error = e
+            print(f"auto prove : {e}")
+             
         finally:
-            if error is None:
-                response = Return(ok=True,value=origin_answer)
-            else:
-                response = Return(ok=False,value=origin_answer ,error=error)
+            response = Return(ok=is_proved ,value=origin_answer, error=error)
             user_question = interrupt(response)
             mode_count[Mode.ENHANCED] = 0
             mode_count[Mode.TOOL] = 0
@@ -292,15 +301,19 @@ class ATPagent:
                     ,"mode": Mode.NORMAL
                     ,"mode_count" : mode_count}
 
+    def end(self,state: State):
+        return {}
 
     def _build(self):
         self.graph_builder.add_node("init",self._init_context)
         self.graph_builder.add_node("core_model",self._core_model)
         self.graph_builder.add_node("auto_prove",self._auto_prove)
+        self.graph_builder.add_node("end",self.end)
         self.graph_builder.add_edge(START,"init")
         self.graph_builder.add_edge("init","core_model")
         self.graph_builder.add_edge("core_model","auto_prove")
         self.graph_builder.add_edge("auto_prove","core_model")
+        self.graph_builder.add_edge("end",END)
         
         return self.graph_builder.compile(checkpointer=self.checkpointer,store=self.memory)
 
@@ -335,16 +348,16 @@ class ATPagent:
             }
         }
         graph = self.graph 
-        
+                    
         def make_session():
             query = yield
-            query = {"history":[HumanMessage(query)]}
-            for event in graph.stream(query, stream_mode="updates", config=config):
-                response = event.get('__interrupt__', None)
-                if response is not None:
-                    yield response
-                    query = yield
-                    query = Command(resume=query)
+            query = {"history":[HumanMessage(query)]}  
+            while True: 
+                for event in graph.stream(query, stream_mode="updates", config=config):
+                    response = event.get("__interrupt__")
+                    if response is not None:
+                        query = yield response
+                        query = Command(resume=query)
                     
         session = make_session()
         next(session)
