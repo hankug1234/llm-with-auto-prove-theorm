@@ -30,6 +30,7 @@ class Mode(Enum):
     NORMAL = "normal"
     ENHANCED = "enhanced"
     TOOL = "tool"
+    END = "end"
     
 class ChatModelNoneException(Exception):
     def __init__(self,message="chat model is None"):
@@ -236,7 +237,7 @@ class ATPagent:
     def _core_model(self,state:State):
         if isinstance(state["history"][-1],HumanMessage) and state["history"][-1].content == self.end_signal:
             print("meet end signal")
-            return Command(goto=END)
+            return {"mode" : Mode.END}
         
         mode_count = state["mode_count"]
         mode = state["mode"]
@@ -301,15 +302,19 @@ class ATPagent:
                 ,"mode": Mode.NORMAL
                 ,"mode_count" : mode_count}
 
+    def _route(self,state:State):
+        if state["mode"] == Mode.END:
+            return END 
+        return "auto_prove"
+    
     def _build(self):
         self.graph_builder.add_node("init",self._init_context)
         self.graph_builder.add_node("core_model",self._core_model)
         self.graph_builder.add_node("auto_prove",self._auto_prove)
         self.graph_builder.add_edge(START,"init")
         self.graph_builder.add_edge("init","core_model")
-        self.graph_builder.add_edge("core_model","auto_prove")
+        self.graph_builder.add_conditional_edges("core_model",self._route,["auto_prove",END])
         self.graph_builder.add_edge("auto_prove","core_model")
-        self.graph_builder.add_edge("core_model", END) 
         
         return self.graph_builder.compile(checkpointer=self.checkpointer,store=self.memory)
 
@@ -347,14 +352,17 @@ class ATPagent:
                     
         def make_session():
             query = yield
-            query = {"history":[HumanMessage(query)]}  
+            query = {"history":[HumanMessage(query)]}
             while True: 
                 for event in graph.stream(query, stream_mode="updates", config=config):
                     response = event.get("__interrupt__")
                     if response is not None:
                         query = yield response
-                        query = Command(resume=query)
-                    
+                        query = Command(resume=query) 
+                        break
+                    else:
+                        yield event
+                
         session = make_session()
         next(session)
         self.sessions[thread_id] = session
