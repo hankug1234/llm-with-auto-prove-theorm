@@ -200,7 +200,7 @@ class ATPagent:
         
         return _converter(result.answer)
     
-    def _current_user_request(history:list[AnyMessage]) -> HumanMessage: 
+    def _current_user_request(self,history:list[AnyMessage]) -> HumanMessage: 
         for message in history[::-1]:
             if isinstance(message,HumanMessage):
                 return message 
