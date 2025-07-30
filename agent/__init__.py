@@ -199,7 +199,9 @@ class ATPagent:
         result = self.fol_translate_model.invoke([SystemMessage(self.fol_translater_prompt),HumanMessage(fol_sentance)]).result 
         if isinstance(result,NoneFOLMessageResponse):
             raise FolConvertFailException()
-        
+        print("+++++++++++++변환++++++++++++++")
+        print(result.answer)
+        print("+++++++++++++++++++++++++++")
         return _converter(result.answer)
     
     def _current_user_request(self,history:list[AnyMessage]) -> HumanMessage: 
@@ -261,7 +263,7 @@ class ATPagent:
                                                             ,"mode_count" : mode_count})
         except Exception as e:
             print(f"core model : {e}")
-            return Command(goto=END) 
+            return {"mode" : Mode.END}
         
         mode_count[Mode.ENHANCED] = 0
         mode_count[Mode.TOOL] = 0
@@ -273,6 +275,9 @@ class ATPagent:
         mode_count = state["mode_count"]
         try:
             fol_formula = self._formal_language_converter(origin_answer)
+            print("+++++++++++++공식++++++++++++++")
+            print(fol_formula)
+            print("+++++++++++++++++++++++++++")
             origin_request = self._current_user_request(state["history"])
             premises,goal = fol_formula
             premises = premises + state["premises"]
