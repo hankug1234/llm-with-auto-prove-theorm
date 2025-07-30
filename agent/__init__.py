@@ -354,14 +354,14 @@ class ATPagent:
             query = yield
             query = {"history":[HumanMessage(query)]}
             while True: 
-                for event in graph.stream(query, stream_mode="updates", config=config):
-                    response = event.get("__interrupt__")
-                    if response is not None:
-                        query = yield response
-                        query = Command(resume=query) 
-                        break
-                    else:
-                        yield event
+                response = graph.invoke(query,config=config)
+                response = response.get("__interrupt__")
+                if response is not None:
+                    query = yield response
+                    query = Command(resume=query)
+                else:
+                    return
+               
                 
         session = make_session()
         next(session)
