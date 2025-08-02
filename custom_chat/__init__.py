@@ -42,13 +42,24 @@ class ChatGPT(BaseChatModel):
             result = model.batch([[HumanMessage(content="hello")],
                                  [HumanMessage(content="world")]])
     """
-    def __init__(self, buffer_length: int ,max_tokens : int, timeout : int, max_retries : int ,model_name:str = "gpt-4o"):
-        self.model_name = model_name
-        self.buffer_length = buffer_length
-        self.max_tokens = max_tokens
-        self.timeout = timeout
-        self.max_retries = max_retries
-        self.llm = ChatGPTWeb(self.model_name,timeout=self.timeout)
+    
+    model_name: str = None
+    buffer_length: int
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+    timeout: Optional[int] = None
+    stop: Optional[List[str]] = None
+    max_retries: int = 2
+    debug_mode_open: bool = True
+    llm: ChatGPTWeb = None
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self.llm = ChatGPTWeb(
+            model=self.model_name,
+            timeout=self.timeout,
+            debug_mode_open=self.debug_mode_open,
+        )
 
     def _generate(
         self,
@@ -75,9 +86,11 @@ class ChatGPT(BaseChatModel):
         # Replace this with actual logic to generate a response from a list
         # of messages.
         request = "\n".join([message.content  for message in messages ])
-        length = self.buffer_length
+        end_length = self.buffer_length
+        start_length = 0
         retry_count = 0
-        ct_input_tokens = len(request)       
+        ct_input_tokens = len(request)
+        tokens = ""       
         
         if ct_input_tokens > self.max_tokens:
             raise OverMaxTokenException(f"over max token error token size must small then {self.max_tokens}")
@@ -85,9 +98,10 @@ class ChatGPT(BaseChatModel):
         start = time.time()
         while retry_count <= self.max_retries:
             try:
-                while length < ct_input_tokens:
-                    tokens = self.llm.invoke(request[:length])
-                    length += self.buffer_length
+                while start_length < ct_input_tokens:
+                    tokens = self.llm.invoke(request[start_length: end_length])
+                    start_length += self.buffer_length
+                    end_length += self.buffer_length
                 break
             except TimeoutException:
                 retry_count += 1
@@ -197,10 +211,23 @@ class ChatGPT(BaseChatModel):
             # costs for the given LLM.)
             "model_name": self.model_name,
         }
+    
+    def params(self):
+        return {
+            "model_name": self.model_name,
+            "buffer_length": self.buffer_length,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "timeout": self.timeout,
+            "stop": self.stop,
+            "max_retries": self.max_retries,
+            "debug_mode_open": self.debug_mode_open
+        }
         
 if __name__ == "__main__":
     
-    chat = ChatGPT(buffer_length = 1500 ,max_tokens = 15000, timeout=60, max_retries=1)
+    chat = ChatGPT(model_name="gpt-4o",buffer_length = 1500 ,max_tokens = 15000, timeout=60, max_retries=1,debug_mode_open=False)
+    print(chat.params())
     messages = [HumanMessage("hellow world")]
     result = chat.invoke(messages)
     print(result.content)

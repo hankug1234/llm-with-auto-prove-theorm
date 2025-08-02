@@ -14,23 +14,27 @@ from config import DEBUG_PORT, CHROMEDRIVER_PATH
 import socket
 from pathlib import Path
 import subprocess, socket, tempfile, time
+import platform
+
 
 class ChatGPTWeb:
     
-    def __init__(self,model:str="gpt-4o", timeout:int=120):
+    def __init__(self,model:str="gpt-4o", timeout:int=120, debug_mode_open:bool=True):
         self.assistant_sel = "div[data-message-author-role='assistant']"
         self.input_sel     = "div#prompt-textarea.ProseMirror[contenteditable='true']"
         self.plus_btn_sel  = "button[data-testid='composer-plus-btn']"
         self.file_sel      = "input[type='file']"
         self.send_btnsel   = "button[data-testid='send-button']"
-        self._launch_chrom_debug_linux()
+        if debug_mode_open:
+            if platform.system() == "Windows":
+                self._launch_chrome_debug_window()
+            else:
+                self._launch_chrom_debug_linux()
+            
         self.driver, self.wait = self._connect_driver()
         self.driver.get(f"https://chatgpt.com/?model={model}")
         self.timeout = timeout
         self.wait.until(lambda d: 'chatgpt.com' in d.current_url)
-        
-    def __del__(self):
-        subprocess.call(["pkill", "-f", "chrome"])
     
     def _launch_chrom_debug_linux(self):
         # 1) 기존 크롬 완전 종료
@@ -183,7 +187,7 @@ class ChatGPTWeb:
         # ── ④ 타임아웃 ───────────────────────────────────────────
         raise TimeoutException("assistant reply not finished in time")
 
-    def invoke(self, text: str, image_path: str | None = None) -> dict:
+    def invoke(self, text: str, image_path: str | None = None) -> str:
         """텍스트/이미지 전송 후 응답 반환 (ProseMirror 입력 대응)"""
         driver = self.driver 
         wait = self.wait
