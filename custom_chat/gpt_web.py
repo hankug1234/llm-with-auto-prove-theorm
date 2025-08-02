@@ -17,7 +17,7 @@ import subprocess, socket, tempfile, time
 
 class ChatGPTWeb:
     
-    def __init__(self,model:str="gpt-4o"):
+    def __init__(self,model:str="gpt-4o", timeout:int=120):
         self.assistant_sel = "div[data-message-author-role='assistant']"
         self.input_sel     = "div#prompt-textarea.ProseMirror[contenteditable='true']"
         self.plus_btn_sel  = "button[data-testid='composer-plus-btn']"
@@ -26,6 +26,7 @@ class ChatGPTWeb:
         self._launch_chrom_debug_linux()
         self.driver, self.wait = self._connect_driver()
         self.driver.get(f"https://chatgpt.com/?model={model}")
+        self.timeout = timeout
         self.wait.until(lambda d: 'chatgpt.com' in d.current_url)
         
     def __del__(self):
@@ -209,7 +210,7 @@ class ChatGPTWeb:
         
         
         # ② Enter 키 이벤트를 강제로 디스패치  ▶ ProseMirror 가 ‘전송’ 으로 인식
-        time.sleep(3)  # UI 가 버튼을 활성화할 시간
+        time.sleep(2)  # UI 가 버튼을 활성화할 시간
         try:
             send_btn = driver.find_element(By.CSS_SELECTOR, self.send_btnsel)
             if send_btn.is_enabled():
@@ -244,7 +245,7 @@ class ChatGPTWeb:
         wait_long.until(_ready) 
 
         
-        self._wait_until_static(driver) 
+        self._wait_until_static(driver,timeout=self.timeout) 
         reply = driver.find_elements(By.CSS_SELECTOR, self.assistant_sel)[-1]
         driver.execute_script("arguments[0].scrollIntoView({block:'center'});", reply)
         return reply.text

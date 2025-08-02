@@ -137,10 +137,12 @@ class ATPagent:
             embeddings = OllamaEmbeddings(model="llama3")
         
         if chat_model is None:
-            chat_model = ChatOllama(model="gemma3:12b").with_structured_output(Response,method="json_schema")
+            #chat_model = ChatOllama(model="gemma3:12b").with_structured_output(Response,method="json_schema")
+            chat_model = ChatOllama(model="gemma3:12b")
             
         if fol_translate_model is None:
-            fol_translate_model = ChatOllama(model="gemma3:12b").with_structured_output(TranslateResponse,method="json_schema")
+            #fol_translate_model = ChatOllama(model="gemma3:12b").with_structured_output(TranslateResponse,method="json_schema")
+            fol_translate_model = ChatOllama(model="gemma3:12b")
         
         if chat_model is None:
             raise ChatModelNoneException
