@@ -87,7 +87,8 @@ class ChatGPT(BaseChatModel):
         """
         # Replace this with actual logic to generate a response from a list
         # of messages.
-        request = "\n".join([message.content  for message in messages ])
+        request = " | ".join([message.content  for message in messages ])
+        request.replace("\n", " | ")
         end_length = self.buffer_length
         start_length = 0
         retry_count = 0

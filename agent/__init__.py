@@ -28,10 +28,12 @@ def add(a: List[Any], b: List[Any]):
     return a + b
 
 class Mode(Enum):
-    NORMAL = "normal"
+    CORE = "core"
     ENHANCED = "enhanced"
     TOOL = "tool"
     END = "end"
+    INTERRUPT = "interrupt"
+    PROVE = "prove"
     
 class ChatModelNoneException(Exception):
     def __init__(self,message="chat model is None"):
@@ -51,6 +53,8 @@ class State(TypedDict):
     user_instruction: SystemMessage
     mode_count: dict
     mode: Mode
+    is_proved: bool 
+    error: Exception
 
 class Return(TypedDict):
     ok: bool 
@@ -166,8 +170,13 @@ class ATPagent:
             user_instruction = SystemMessage(self._make_agent_model())
         return {"history" : state["history"], 
                 "user_instruction" : user_instruction,
-                "mode_count" : {Mode.ENHANCED : 0, Mode.TOOL : 0, Mode.NORMAL : 0},
-                "mode" : Mode.NORMAL
+                "mode_count" : {Mode.ENHANCED : 0
+                                , Mode.TOOL : 0
+                                , Mode.CORE : 0
+                                , Mode.INTERRUPT : 0},
+                "mode" : Mode.CORE,
+                "is_proved" : False,
+                "error" : None
                 }
     
     def _retrive_long_term_memory(self, namespace: str ,query: str , limit: int, store:BaseStore)-> list[SearchItem]: 
@@ -239,22 +248,21 @@ class ATPagent:
         return None 
     
     def _core_model(self,state:State):
-        if isinstance(state["history"][-1],HumanMessage) and state["history"][-1].content == self.end_signal:
+        if isinstance(state["history"][-1],HumanMessage) and state["history"][-1].content.strip() == self.end_signal:
             print("meet end signal")
             return {"mode" : Mode.END}
         
+        if mode_count[state["mode"]] > self.max_attemption:
+            return {"mode" : Mode.INTERRUPT}
+        
         mode_count = state["mode_count"]
-        mode = state["mode"]
+        error, is_proved = state["error"], state["is_proved"]
         response = None 
         message = None
         
         try:
-            if mode != Mode.NORMAL and mode_count[mode] > self.max_attemption:
-                message = interrupt(Return(ok=False, error=OverMaxAttemptionException()))
-                response = self.chat_model.invoke([state["user_instruction"],HumanMessage(message)])
-            else:
-                message = state["history"][-1]
-                response = self.chat_model.invoke([state["user_instruction"],message])
+            message = state["history"][-1]
+            response = self.chat_model.invoke([state["user_instruction"],message])
             
             if self.custom_tool_mode:
                 tools = self._get_tools(response.content)
@@ -262,17 +270,21 @@ class ATPagent:
                     tool_call_results = "\n".join([f"{k} = {v}" for k,v in self.tools.tools_calling(tools)])
                     mode_count[Mode.ENHANCED] = 0
                     mode_count[Mode.TOOL] += 1
-                    return Command(goto="core_model", update = {"history": [message,response,SystemMessage(tool_call_results)]
-                                                                ,"mode":Mode.TOOL
-                                                                ,"mode_count" : mode_count})
+                    return {"history": [response,SystemMessage(tool_call_results)]
+                            ,"mode":Mode.TOOL
+                            ,"mode_count" : mode_count
+                            ,"is_proved" : is_proved
+                            ,"error" : error}
             else:
                 if response.tool_calls:
                     tool_call_results = self.tools.invoke({"messages": [response]})['messages'] 
                     mode_count[Mode.ENHANCED] = 0
                     mode_count[Mode.TOOL] += 1
-                    return Command(goto="core_model", update = {"history": [message,response,tool_call_results]
-                                                                ,"mode":Mode.TOOL
-                                                                ,"mode_count" : mode_count})
+                    return {"history": [response,tool_call_results]
+                            ,"mode":Mode.TOOL
+                            ,"mode_count" : mode_count
+                            ,"is_proved" : is_proved
+                            ,"error" : error}
                      
         except Exception as e:
             print(f"core model : {e}")
@@ -280,12 +292,17 @@ class ATPagent:
         
         mode_count[Mode.ENHANCED] = 0
         mode_count[Mode.TOOL] = 0
-        return {"history": [message,response],"mode": Mode.NORMAL, "mode_count" : mode_count}
+        return {"history": [response]
+                ,"mode": Mode.PROVE
+                ,"mode_count" : mode_count
+                ,"is_proved" : is_proved
+                ,"error" : error}
     
     def _auto_prove(self,state:State):
-        error, is_proved = None, False
+        is_proved,error = False,None
         origin_answer = state["history"][-1].content
         mode_count = state["mode_count"]
+        
         try:
             fol_formula = self._formal_language_converter(origin_answer)
             origin_request = self._current_user_request(state["history"])
@@ -299,7 +316,9 @@ class ATPagent:
                 mode_count[Mode.TOOL] = 0
                 return {"history" : [HumanMessage(request)]
                         ,"mode": Mode.ENHANCED
-                        ,"mode_count" : mode_count}        
+                        ,"mode_count" : mode_count
+                        ,"is_proved" : is_proved
+                        ,"error" : error}        
              
         except FolConvertFailException as e:
             error = e
@@ -308,28 +327,53 @@ class ATPagent:
         except Exception as e:
             error = e
             print(f"auto prove : {e}")
-             
-        response = Return(ok=is_proved ,value=origin_answer, error=error)
-        user_question = interrupt(response)
+        
+        return {
+                "mode": Mode.INTERRUPT
+                ,"mode_count" : mode_count
+                ,"is_proved" : is_proved
+                ,"error" : error} 
+
+    def _interrupt(self,state:State):
+        
+        mode_count = state["mode_count"]
+        error, is_proved = state["error"], state["is_proved"]
+        
+        if any([True if v > self.max_attemption else False for v in mode_count.values()]):
+            response = Return(ok=False, error=OverMaxAttemptionException())
+            user_question = interrupt(response)
+        else:     
+            origin_answer = state["history"][-1].content
+            response = Return(ok=is_proved ,value=origin_answer, error=error)
+            user_question = interrupt(response)
+            
         mode_count[Mode.ENHANCED] = 0
         mode_count[Mode.TOOL] = 0
         return {"history" : [HumanMessage(user_question)]
-                ,"mode": Mode.NORMAL
-                ,"mode_count" : mode_count}
-
+                ,"mode": Mode.CORE
+                ,"mode_count" : mode_count
+                ,"is_proved" : False
+                ,"error" : None}
+    
     def _route(self,state:State):
         if state["mode"] == Mode.END:
-            return END 
-        return "auto_prove"
+            return END
+        elif state["mode"] == Mode.TOOL or state["mode"] == Mode.CORE:
+            return "core_model"
+        elif state["mode"] == Mode.INTERRUPT:
+            return "interrupt" 
+        else:
+            return "auto_prove"
     
     def _build(self):
         self.graph_builder.add_node("init",self._init_context)
         self.graph_builder.add_node("core_model",self._core_model)
         self.graph_builder.add_node("auto_prove",self._auto_prove)
+        self.graph_builder.add_node("interrupt",self._interrupt)
         self.graph_builder.add_edge(START,"init")
         self.graph_builder.add_edge("init","core_model")
-        self.graph_builder.add_conditional_edges("core_model",self._route,["auto_prove",END])
-        self.graph_builder.add_edge("auto_prove","core_model")
+        self.graph_builder.add_conditional_edges("core_model",self._route,["auto_prove","core_model","interrupt",END])
+        self.graph_builder.add_conditional_edges("auto_prove",self._route,["interrupt","core_model"])
         
         return self.graph_builder.compile(checkpointer=self.checkpointer,store=self.memory)
 
