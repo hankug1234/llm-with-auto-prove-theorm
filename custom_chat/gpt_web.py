@@ -10,7 +10,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common import TimeoutException
 # === 설정 ===
-from config import DEBUG_PORT, CHROMEDRIVER_PATH
+from custom_chat.config import DEBUG_PORT, CHROMEDRIVER_PATH
 import socket
 from pathlib import Path
 import subprocess, socket, tempfile, time

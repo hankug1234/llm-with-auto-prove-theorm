@@ -1,5 +1,5 @@
 from agent import ATPagent 
-
+from custom_chat import ChatGPT
 
 if __name__ == "__main__":
     user_instruction = {
@@ -10,7 +10,8 @@ if __name__ == "__main__":
                     "{{RULES}}":"",
                     "{{EXAMPLES}}":""
                  }
-    agent = ATPagent(user_instruction=None)
+    chat = ChatGPT(model_name="gpt-4o",buffer_length = 1500 ,max_tokens = 15000, timeout=60, max_retries=1,debug_mode_open=False)
+    agent = ATPagent(user_instruction=None,fol_translate_model=chat ,chat_model=chat)
     session = agent.get_sesesion()
     
     while True:

@@ -1,4 +1,6 @@
-from gpt_web import ChatGPTWeb 
+import sys 
+sys.path.append(".")
+from custom_chat.gpt_web import ChatGPTWeb 
 from typing import Any, Dict, Iterator, List, Optional
 from langchain_core.callbacks import (
     CallbackManagerForLLMRun,
