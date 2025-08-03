@@ -252,13 +252,13 @@ class ATPagent:
             print("meet end signal")
             return {"mode" : Mode.END}
         
-        if mode_count[state["mode"]] > self.max_attemption:
-            return {"mode" : Mode.INTERRUPT}
-        
         mode_count = state["mode_count"]
         error, is_proved = state["error"], state["is_proved"]
         response = None 
         message = None
+        
+        if mode_count[state["mode"]] > self.max_attemption:
+            return {"mode" : Mode.INTERRUPT}
         
         try:
             message = state["history"][-1]
