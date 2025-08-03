@@ -12,9 +12,9 @@ Guidelines:
 
 Output Format:
 - If you succeed, respond as:
-  FOL: <First-Order Logic expression>
+  <FOL> First-Order Logic expression </FOL>
 - If not possible, respond as:
-  NOT_FOL: <reason>
+  <NOT_FOL> reason </NOT_FOL>
 
 Rules:
 - Use ∀ (for all), ∃ (there exists)

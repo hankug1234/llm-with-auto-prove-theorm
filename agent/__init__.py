@@ -180,10 +180,11 @@ class ATPagent:
     def _formal_language_converter(self,fol_sentance : str) -> Tuple[List[Formula], Formula]:
         _converter = pre_modification_fol_interpreter
         result = self.fol_translate_model.invoke([SystemMessage(self.fol_translater_prompt),HumanMessage(fol_sentance)]).content
-        if "NOT_FOL:" in result:
-            raise FolConvertFailException()
+        
+        if not_fol := self._get_not_fol(result):
+            raise FolConvertFailException(not_fol)
 
-        return _converter(result.replace("FOL:","").strip())
+        return _converter(self._get_fol(result).strip())
     
     def _current_user_request(self,history:list[AnyMessage]) -> HumanMessage: 
         for message in history[::-1]:
@@ -218,6 +219,20 @@ class ATPagent:
         
     def _get_tools(self,script:str) -> str:
         match = re.search(r"<result>(.*?)</result>", script, re.DOTALL)
+        if match:
+            content = match.group(1)
+            return content.strip() 
+        return None 
+    
+    def _get_fol(self,script:str) -> str:
+        match = re.search(r"<FOL>(.*?)</FOL>", script, re.DOTALL)
+        if match:
+            content = match.group(1)
+            return content.strip() 
+        return None 
+    
+    def _get_not_fol(self,script:str) -> str:
+        match = re.search(r"<NOT_FOL>(.*?)</NOT_FOL>", script, re.DOTALL)
         if match:
             content = match.group(1)
             return content.strip() 
