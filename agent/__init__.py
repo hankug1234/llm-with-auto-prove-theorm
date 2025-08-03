@@ -6,7 +6,7 @@ from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_ollama import OllamaEmbeddings
 from langgraph.store.memory import InMemoryStore
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, AnyMessage, RemoveMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, AnyMessage, RemoveMessage, ToolMessage
 from pydantic import BaseModel, Field
 from typing import Annotated, TypedDict, Union, Any, Callable, List, Tuple
 from langgraph.graph import StateGraph, START, END
@@ -14,13 +14,14 @@ from langgraph.graph.message import add_messages
 from langgraph.store.base import BaseStore, SearchItem
 from langgraph.types import Command, interrupt
 from agent.toolkits import Tools
+from langgraph.prebuilt import ToolNode
 from auto_prove.tableau import Tableau
 from auto_prove import Formula, Notated, Operation, operation2string
 from prompt.enhanced_request_by_none_closed_branches import PROMPT as enhanced_request
 from prompt.fol_convertor_strict import PROMPT as fol_convertor_strict 
 from prompt.fol_convertor_none_strict import PROMPT as fol_convertor_none_strict
 from prompt.agent_modelfile import PROMPT as agent_modelfile
-import threading
+import threading, re
 
 
 def add(a: List[Any], b: List[Any]):
@@ -43,32 +44,6 @@ class FolConvertFailException(Exception):
 class OverMaxAttemptionException(Exception):
     def __init__(self,message="over max attemption"):
         super().__init__(message)
-
-class ToolCallResponse(BaseModel):
-    """이것은 llm model이 tools를 호출 할떄 사용 하는 양식 입니다 . <function>[{“function”: {“name”: “some name”, “arguments”: { “some arguments”: “some content” }}},...]</function> 이런 형식의 문장이 답변에 포함 되어 있을시 이 도구를 사용 하세요 """
-    tools: str = Field(description="[{“function”: {“name”: “some name”, “arguments”: { “some arguments”: “some content” }}},...]" )
-
-class MessageResponse(BaseModel):
-    """이것은 llm model 의 일반적인 반환 양식 입니다. tools 호출 이외에는 이 양식을 사용 합니다.  """
-    answer: str = Field(description="response of llm model") 
-
-class Response(BaseModel):
-    result: Union[ToolCallResponse,MessageResponse]
-    
-class FOLMessageResponse(BaseModel):
-    """
-    if llm output like FOL: <First-Order Logic expression> format use this response type   
-    """    
-    answer: str = Field(description="<First-Order Logic expression>") 
-
-class NoneFOLMessageResponse(BaseModel):
-    """
-    if llm output like NOT_FOL: <reason> format use this response type   
-    """    
-    answer: str = Field(description="<reason>") 
-
-class TranslateResponse(BaseModel):
-    result: Union[FOLMessageResponse,NoneFOLMessageResponse]
     
 class State(TypedDict):
     history: Annotated[list[AnyMessage], add_messages]
@@ -116,7 +91,8 @@ class ATPagent:
                     "{{EXAMPLES}}":""
                  }
                  ,max_attemption : int = 5
-                 ,tools : List[Callable] =[] 
+                 ,tools : List[Callable] =[]
+                 ,custom_tool_mode: bool = True
                  ,chat_model = None
                  ,fol_translate_model = None
                  ,embeddings=None
@@ -124,10 +100,15 @@ class ATPagent:
                  ,prove_system = Tableau()
                  ,fol_strict_mode: bool = False):
         
+        self.custom_tool_mode = custom_tool_mode
         if len(tools) > 0:
-            self.tools = Tools(tools)
+            if custom_tool_mode:
+                self.tools = Tools(tools)
+            else:
+                self.tools = ToolNode(tools=tools)
         else:
             self.tools = None 
+            
         self.end_signal = end_signal
         self.user_id = user_id
         self.max_attemption = max_attemption
@@ -198,11 +179,11 @@ class ATPagent:
         
     def _formal_language_converter(self,fol_sentance : str) -> Tuple[List[Formula], Formula]:
         _converter = pre_modification_fol_interpreter
-        result = self.fol_translate_model.invoke([SystemMessage(self.fol_translater_prompt),HumanMessage(fol_sentance)]).result 
-        if isinstance(result,NoneFOLMessageResponse):
+        result = self.fol_translate_model.invoke([SystemMessage(self.fol_translater_prompt),HumanMessage(fol_sentance)]).content
+        if "NOT_FOL:" in result:
             raise FolConvertFailException()
-       
-        return _converter(result.answer)
+
+        return _converter(result.replace("FOL:","").strip())
     
     def _current_user_request(self,history:list[AnyMessage]) -> HumanMessage: 
         for message in history[::-1]:
@@ -235,7 +216,13 @@ class ATPagent:
         .replace("{{PREMISES}}",premises)\
         .replace("{{OPEN_BRANCHES}}",branches)
         
-        
+    def _get_tools(self,script:str) -> str:
+        match = re.search(r"<result>(.*?)</result>", script, re.DOTALL)
+        if match:
+            content = match.group(1)
+            return content.strip() 
+        return None 
+    
     def _core_model(self,state:State):
         if isinstance(state["history"][-1],HumanMessage) and state["history"][-1].content == self.end_signal:
             print("meet end signal")
@@ -253,21 +240,32 @@ class ATPagent:
             else:
                 message = state["history"][-1]
                 response = self.chat_model.invoke([state["user_instruction"],message])
-            response = response.result
-            if isinstance(response,ToolCallResponse):
-                tool_call_results = "\n".join([f"{k} = {v}" for k,v in self.tools.tools_calling(response.tools)])
-                mode_count[Mode.ENHANCED] = 0
-                mode_count[Mode.TOOL] += 1
-                return Command(goto="core_model", update = {"history": [message,AIMessage(response.tools),SystemMessage(tool_call_results)]
-                                                            ,"mode":Mode.TOOL
-                                                            ,"mode_count" : mode_count})
+            
+            if self.custom_tool_mode:
+                tools = self._get_tools(response.content)
+                if tools:
+                    tool_call_results = "\n".join([f"{k} = {v}" for k,v in self.tools.tools_calling(tools)])
+                    mode_count[Mode.ENHANCED] = 0
+                    mode_count[Mode.TOOL] += 1
+                    return Command(goto="core_model", update = {"history": [message,response,SystemMessage(tool_call_results)]
+                                                                ,"mode":Mode.TOOL
+                                                                ,"mode_count" : mode_count})
+            else:
+                if response.tool_calls:
+                    tool_call_results = self.tools.invoke({"messages": [response]})['messages'] 
+                    mode_count[Mode.ENHANCED] = 0
+                    mode_count[Mode.TOOL] += 1
+                    return Command(goto="core_model", update = {"history": [message,response,tool_call_results]
+                                                                ,"mode":Mode.TOOL
+                                                                ,"mode_count" : mode_count})
+                     
         except Exception as e:
             print(f"core model : {e}")
             return {"mode" : Mode.END}
         
         mode_count[Mode.ENHANCED] = 0
         mode_count[Mode.TOOL] = 0
-        return {"history": [message,AIMessage(response.answer)],"mode": Mode.NORMAL, "mode_count" : mode_count}
+        return {"history": [message,response],"mode": Mode.NORMAL, "mode_count" : mode_count}
     
     def _auto_prove(self,state:State):
         error, is_proved = None, False
@@ -284,7 +282,7 @@ class ATPagent:
                 request = self._enhaned_request(none_closed_branches,origin_request,origin_answer,premises,goal)
                 mode_count[Mode.ENHANCED] += 1
                 mode_count[Mode.TOOL] = 0
-                return {"history" : [SystemMessage(request)]
+                return {"history" : [HumanMessage(request)]
                         ,"mode": Mode.ENHANCED
                         ,"mode_count" : mode_count}        
              

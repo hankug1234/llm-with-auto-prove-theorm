@@ -225,9 +225,11 @@ class ChatGPT(BaseChatModel):
         }
         
 if __name__ == "__main__":
-    
-    chat = ChatGPT(model_name="gpt-4o",buffer_length = 1500 ,max_tokens = 15000, timeout=60, max_retries=1,debug_mode_open=False)
+    import sys 
+    sys.path.append(".")
+    from agent import Response
+    chat = ChatGPT(model_name="gpt-4o",buffer_length = 1500 ,max_tokens = 15000, timeout=60, max_retries=1,debug_mode_open=False).with_structured_output(Response,method="json_schema")
     print(chat.params())
-    messages = [HumanMessage("hellow world")]
+    messages = [HumanMessage("how are you doing")]
     result = chat.invoke(messages)
     print(result.content)
