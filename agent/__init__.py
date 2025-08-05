@@ -18,8 +18,8 @@ from langgraph.prebuilt import ToolNode
 from auto_prove.tableau import Tableau
 from auto_prove import Formula, Notated, Operation, operation2string
 from prompt.enhanced_request_by_none_closed_branches import PROMPT as enhanced_request
-from prompt.fol_convertor_strict import PROMPT as fol_convertor_strict 
-from prompt.fol_convertor_none_strict import PROMPT as fol_convertor_none_strict
+from prompt.fol_convertor_mini import PROMPT as fol_convertor_mini 
+from prompt.fol_convertor import PROMPT as fol_convertor
 from prompt.agent_modelfile import PROMPT as agent_modelfile
 import threading, re
 
@@ -102,7 +102,7 @@ class ATPagent:
                  ,embeddings=None
                  ,fields: List[str] = []
                  ,prove_system = Tableau()
-                 ,fol_strict_mode: bool = False):
+                 ,fol_mini_mode: bool = True):
         
         self.custom_tool_mode = custom_tool_mode
         if len(tools) > 0:
@@ -142,7 +142,7 @@ class ATPagent:
         "fields":fields
         })
         
-        self.set_fol_translater_mode(fol_strict_mode)
+        self.set_fol_translater_mode(fol_mini_mode)
         
         self.checkpointer = MemorySaver()
         self.graph_builder = StateGraph(state_schema=State)
@@ -189,7 +189,7 @@ class ATPagent:
     def _formal_language_converter(self,fol_sentance : str) -> Tuple[List[Formula], Formula]:
         _converter = pre_modification_fol_interpreter
         result = self.fol_translate_model.invoke([SystemMessage(self.fol_translater_prompt),HumanMessage(fol_sentance)]).content
-        
+        print(result)
         if not_fol := self._get_not_fol(result):
             raise FolConvertFailException(not_fol)
 
@@ -378,11 +378,11 @@ class ATPagent:
         return self.graph_builder.compile(checkpointer=self.checkpointer,store=self.memory)
 
     def set_fol_translater_mode(self,strict:bool):
-        self.fol_strict_mode = strict
-        if self.fol_strict_mode:
-            self.fol_translater_prompt = fol_convertor_strict
+        self.fol_mini_mode = strict
+        if self.fol_mini_mode:
+            self.fol_translater_prompt = fol_convertor_mini
         else: 
-            self.fol_translater_prompt = fol_convertor_none_strict
+            self.fol_translater_prompt = fol_convertor
     
     async def async_excute(self, query :str, thread_id: str = "1"):
         config = {

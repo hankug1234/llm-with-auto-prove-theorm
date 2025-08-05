@@ -106,6 +106,7 @@ class Operation(Enum):
     NAND = "downarrow"
     NOT_IMPLIE = "notimp"
     NOT_REVERSED_IMPLIE = "notrevimp"
+    AND_IMPLIE_BI = "and_imp_bi"
     SOME = "some"
     ALL = "all"
     EQUAL = "equal"
@@ -116,7 +117,8 @@ class Operation(Enum):
     def is_binary_ops(self) -> bool:
         return self in {
             Operation.AND, Operation.OR, Operation.IMPLIE, Operation.REVERSED_IMPLIE,
-            Operation.NOR, Operation.NAND, Operation.NOT_IMPLIE, Operation.NOT_REVERSED_IMPLIE
+            Operation.NOR, Operation.NAND, Operation.NOT_IMPLIE, Operation.NOT_REVERSED_IMPLIE,
+            Operation.AND_IMPLIE_BI
         }
 
     def is_quantifiers(self) -> bool:

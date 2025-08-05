@@ -6,7 +6,7 @@ import re,sys
 
 sys.setrecursionlimit(10000)
 
-_variation_pattern = re.compile(r'^[x-z][0-9]*$')
+_variation_pattern = re.compile(r'^[αβγδεζηθικλμνξοπρστυφχψω]$')
 
 class String2FormulaConvertException(Exception):
     def __init__(self, message):
@@ -22,9 +22,9 @@ def _primitive(value:str)->Union[bool,Var,Constant]:
     if _variation_pattern.fullmatch(value):
         return Var(value)
     elif len(value) >= 1:
-        if value == "false":
+        if value in ["false", "False", "FALSE"]:
             return False
-        elif value == "true":
+        elif value == ["true","True","TRUE"]:
             return True
         else:
             return Constant(value)
@@ -162,6 +162,7 @@ def pre_modification_fol_interpreter(fol:str) -> Tuple[List[Formula], Formula]:
         premises,_ = _formula(premises)
         premises = _seperate_premises(premises)
         goal,_ = _formula(goal)
+        
         return ([_pre_modification(premise) for premise in premises ], _pre_modification(goal)) 
     
     goal,_ = _formula(fol)

@@ -10,8 +10,8 @@ if __name__ == "__main__":
                     "{{RULES}}":"",
                     "{{EXAMPLES}}":""
                  }
-    chat = ChatGPT(model_name="gpt-4o",buffer_length = 3000 ,max_tokens = 15000, timeout=60, max_retries=1,debug_mode_open=False)
-    agent = ATPagent(user_instruction=None,fol_translate_model=chat ,chat_model=chat)
+    #chat = ChatGPT(model_name="gpt-4o",buffer_length = 3000 ,max_tokens = 15000, timeout=60, max_retries=1,debug_mode_open=False)
+    agent = ATPagent(user_instruction=None)
     session = agent.get_sesesion()
     
     while True:
@@ -23,3 +23,5 @@ if __name__ == "__main__":
             print(response)
         
     print("agent stoped ...")
+    
+    #<FOL> ∀x (Guard(x) → (¬FeelsSad(x) ↔ ¬Lies(x))) </FOL>

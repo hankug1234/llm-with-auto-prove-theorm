@@ -95,4 +95,4 @@ def test_interpreter():
     
 if __name__ == "__main__":
     from auto_prove.interpreter import pre_modification_fol_interpreter as interpreter  
-    print(interpreter("∀x (P(x) → ∃y R(x,y)) , P(c) ⊢ ∃y R(c,y)"))
+    print(interpreter("q = If you are the truth-teller, would you say you are the truth-teller?, ∀x (Gatekeeper(x) → (Answer(x, q) = Yes ↔ TruthTeller(x))) ⊢ ∀x (Answer(x, q) = Yes → TruthTeller(x)) ".strip()))

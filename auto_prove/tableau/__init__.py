@@ -83,7 +83,7 @@ class Tableau:
         op = form[0]
 
         # 직접 α
-        if op in {Operation.AND, Operation.NOR}:
+        if op in {Operation.AND, Operation.NOR, Operation.AND_IMPLIE_BI}:
             return True
 
         # 부정 α :  ¬(β형)
@@ -91,7 +91,8 @@ class Tableau:
             inner_op = form[1][0]
             if inner_op in {Operation.OR,
                             Operation.IMPLIE,
-                            Operation.REVERSED_IMPLIE}:
+                            Operation.REVERSED_IMPLIE,
+                            Operation.NAND}:
                 return True
         return False
 
@@ -111,7 +112,7 @@ class Tableau:
         # 부정 β :  ¬(α형)
         if op == Operation.NEG and isinstance(form[1], tuple):
             inner_op = form[1][0]
-            if inner_op in {Operation.AND}:
+            if inner_op in {Operation.AND, Operation.NOR, Operation.AND_IMPLIE_BI}:
                 return True
         return False
 
@@ -148,6 +149,8 @@ class Tableau:
                 return (form[1], (Operation.NEG, form[2]))
             if op == Operation.NOT_REVERSED_IMPLIE:
                 return (form[2],(Operation.NEG, form[1]))
+            if op == Operation.AND_IMPLIE_BI:
+                return ((form[1], (Operation.NEG, form[2])), (form[2], (Operation.NEG, form[1])))
             if op == Operation.NEG and isinstance(form[1], tuple):
                 inner = form[1]
                 in_op, a, b = inner[0], inner[1], inner[2]
@@ -165,6 +168,8 @@ class Tableau:
                     case Operation.NOT_REVERSED_IMPLIE:
                         # ¬¬(A←B)  →  A←B  →  (¬B , A)
                         return (Operation.NEG, b), a
+                    case Operation.AND_IMPLIE_BI:
+                        return (b, (Operation.NEG, a)), (a, (Operation.NEG, b))
                     
         raise ValueError(f"No components for {form}")
 
