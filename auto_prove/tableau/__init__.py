@@ -83,7 +83,11 @@ class Tableau:
         op = form[0]
 
         # 직접 α
-        if op in {Operation.AND, Operation.NOR, Operation.AND_IMPLIE_BI}:
+        if op in {Operation.AND,
+                  Operation.NOR,
+                  Operation.AND_IMPLIE_BI,
+                  Operation.NOT_IMPLIE,
+                  Operation.NOT_REVERSED_IMPLIE}:
             return True
 
         # 부정 α :  ¬(β형)
@@ -112,7 +116,11 @@ class Tableau:
         # 부정 β :  ¬(α형)
         if op == Operation.NEG and isinstance(form[1], tuple):
             inner_op = form[1][0]
-            if inner_op in {Operation.AND, Operation.NOR, Operation.AND_IMPLIE_BI}:
+            if inner_op in {Operation.AND,
+                            Operation.NOR,
+                            Operation.AND_IMPLIE_BI,
+                            Operation.NOT_IMPLIE,
+                            Operation.NOT_REVERSED_IMPLIE}:
                 return True
         return False
 
