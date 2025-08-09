@@ -171,7 +171,7 @@ class ATPagent:
             user_instruction = SystemMessage(self.tools.get_template(self._make_agent_model()))
         else:
             user_instruction = SystemMessage(self._make_agent_model())
-        logging.info("##### initialized #####")
+        logging.info("##### INITIALIZED #####")
         return {"history" : state["history"], 
                 "user_instruction" : user_instruction,
                 "mode_count" : {Mode.ENHANCED : 0
@@ -252,9 +252,9 @@ class ATPagent:
     
     def _core_model(self,state:State):
         if isinstance(state["history"][-1],HumanMessage) and state["history"][-1].content.strip() == self.end_signal:
-            logging.info("##### meet end signal #####")
+            logging.info("##### MEET END SIGNAL #####")
             return {"mode" : Mode.END}
-        
+        logging.info("##### CALL LLM #####")
         mode_count = state["mode_count"]
         error, is_proved = state["error"], state["is_proved"]
         response = None 
