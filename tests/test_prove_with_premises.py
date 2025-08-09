@@ -79,4 +79,22 @@ def test_prove_with_premises():
     # ----------------------------------------------
     
         
-    
+if __name__ == "__main__":
+        from auto_prove.interpreter import pre_modification_fol_interpreter as interpreter  
+        tableau_prover = Tableau()
+        prove_with_premises = tableau_prover.prove
+        premises, goal = interpreter("∀x (Guard(x) → (¬FeelsSad(x) ↔ ¬Lies(x)))".strip())
+        print("premises: ")
+        for premise in premises:
+                print(premise)
+        print("goal: ")
+        print(goal)
+        print()
+        print()
+        result, branches = prove_with_premises(premises, goal, qdepth=5)
+        
+        print("none cloesed branches: ")        
+        for branch in branches:
+                print(branch)
+        print("result: ")
+        print(result)

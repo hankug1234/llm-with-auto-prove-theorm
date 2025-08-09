@@ -22,6 +22,9 @@ from prompt.fol_convertor_mini import PROMPT as fol_convertor_mini
 from prompt.fol_convertor import PROMPT as fol_convertor
 from prompt.agent_modelfile import PROMPT as agent_modelfile
 import threading, re
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 
 def add(a: List[Any], b: List[Any]):
@@ -77,7 +80,7 @@ class Session:
         try:
             return self.__sessions[self.thread_id].send(query)  # yield에 값 전달 후 다음 yield까지 실행
         except StopIteration:
-            print("iteration end")
+            logging.info("##### iteration end #####")
             with self.lock:
                 del self.__sessions[self.thread_id]
             return None
@@ -168,6 +171,7 @@ class ATPagent:
             user_instruction = SystemMessage(self.tools.get_template(self._make_agent_model()))
         else:
             user_instruction = SystemMessage(self._make_agent_model())
+        logging.info("##### initialized #####")
         return {"history" : state["history"], 
                 "user_instruction" : user_instruction,
                 "mode_count" : {Mode.ENHANCED : 0
@@ -189,7 +193,6 @@ class ATPagent:
     def _formal_language_converter(self,fol_sentance : str) -> Tuple[List[Formula], Formula]:
         _converter = pre_modification_fol_interpreter
         result = self.fol_translate_model.invoke([SystemMessage(self.fol_translater_prompt),HumanMessage(fol_sentance)]).content
-        print(result)
         if not_fol := self._get_not_fol(result):
             raise FolConvertFailException(not_fol)
 
@@ -249,7 +252,7 @@ class ATPagent:
     
     def _core_model(self,state:State):
         if isinstance(state["history"][-1],HumanMessage) and state["history"][-1].content.strip() == self.end_signal:
-            print("meet end signal")
+            logging.info("##### meet end signal #####")
             return {"mode" : Mode.END}
         
         mode_count = state["mode_count"]
@@ -287,7 +290,7 @@ class ATPagent:
                             ,"error" : error}
                      
         except Exception as e:
-            print(f"core model : {e}")
+            logging.error(f"core model : {e}")
             return {"mode" : Mode.END}
         
         mode_count[Mode.ENHANCED] = 0
@@ -309,11 +312,23 @@ class ATPagent:
             premises,goal = fol_formula
             premises = premises + state["premises"]
             is_proved, none_closed_branches = self.prove_system.prove(premises=premises, conclusion=goal)
-             
+            
+            logging.info("##### FOL #####")
+            logging.info(f"premises: {premises}")
+            logging.info(f"goal: {goal}")
+            logging.info(f"proved: {is_proved}")
+            logging.info(f"not closed branches: {none_closed_branches}")
+            logging.info("##### FOL END #####")
+            
             if not is_proved:
                 request = self._enhaned_request(none_closed_branches,origin_request,origin_answer,premises,goal)
                 mode_count[Mode.ENHANCED] += 1
                 mode_count[Mode.TOOL] = 0
+                
+                logging.info("##### ENHANCED REQUEST #####")
+                logging.info(request)
+                logging.info("##### ENHANCED REQUEST END #####")
+                
                 return {"history" : [HumanMessage(request)]
                         ,"mode": Mode.ENHANCED
                         ,"mode_count" : mode_count
@@ -322,11 +337,11 @@ class ATPagent:
              
         except FolConvertFailException as e:
             error = e
-            print(f"auto prove : {e}")
+            logging.error(f"auto prove : {e}")
             
         except Exception as e:
             error = e
-            print(f"auto prove : {e}")
+            logging.error(f"auto prove : {e}")
         
         return {
                 "mode": Mode.INTERRUPT
