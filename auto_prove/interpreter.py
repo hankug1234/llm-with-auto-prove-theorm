@@ -2,11 +2,9 @@ from auto_prove import Formula, Constant, Var, Function, Predicate, Operation, o
 from auto_prove import operation2string, Term
 from collections import deque 
 from typing import Tuple,List,Union
-import re,sys
+import sys
 
 sys.setrecursionlimit(10000)
-
-_variation_pattern = re.compile(r'^[αβγδεζηθικλμνξοπρστυφχψω]$')
 
 class String2FormulaConvertException(Exception):
     def __init__(self, message):
@@ -18,8 +16,8 @@ class Formula2StringConvertException(Exception):
         super().__init__(message)
         self.message = message
 
-def _primitive(value:str)->Union[bool,Var,Constant]:
-    if _variation_pattern.fullmatch(value):
+def _primitive(value:str, is_var)->Union[bool,Var,Constant]:
+    if is_var and len(value) >= 1:
         return Var(value)
     elif len(value) >= 1:
         if value in ["false", "False", "FALSE"]:
@@ -41,7 +39,7 @@ def _formula(formula:str) -> Tuple[Formula, str]:
         if flag:
             if ch == ']':
                 flag = False
-                primitive = _primitive(value)
+                primitive = _primitive(value,False)
                 if primitive is not None:
                     params.append(primitive)
                     
@@ -62,7 +60,7 @@ def _formula(formula:str) -> Tuple[Formula, str]:
                 sub_formula = Function(value,list(_params))
             else:
                 sub_formula = _params
-                primitive = _primitive(value)
+                primitive = _primitive(value,True)
                 if primitive is not None:
                     params.append(primitive)
                 
@@ -73,7 +71,7 @@ def _formula(formula:str) -> Tuple[Formula, str]:
             continue
         elif ch == ")":
 
-            primitive = _primitive(value)
+            primitive = _primitive(value,True)
             if primitive is not None:
                 params.append(primitive)
                 
@@ -81,7 +79,7 @@ def _formula(formula:str) -> Tuple[Formula, str]:
             return (tuple(params), formula[i+1:])
         elif ch == ',' or ch.isspace() or is_operation(ch) or i+1 == len(formula):
                                 
-            primitive = _primitive(value)
+            primitive = _primitive(value,True)
             if primitive is not None:
                 params.append(primitive)
                 
@@ -141,11 +139,12 @@ def _pre_modification(formula: Formula)->Formula:
 def _seperate_premises(premises:Formula) -> List[Formula]:
     
     def _seperate_point(e,stack):
-        if isinstance(e,Operation) and not e.is_binary_ops():
-            if len(stack) > 0 and is_formula(stack[-1]):
-                return True 
-        elif len(stack) > 0 and is_formula(stack[-1]) and is_formula(e):
-            return True 
+        if len(stack) > 0 and is_formula(e) and is_formula(stack[-1]):
+            return True
+        if len(stack) > 0 and isinstance(e,Operation) and isinstance(stack[-1],Constant):
+            return True
+        if len(stack) > 0 and isinstance(e,Constant) and isinstance(stack[-1],Constant):
+            return True
         return False
                         
     if is_atom(premises):
@@ -178,7 +177,7 @@ def pre_modification_fol_interpreter(fol:str) -> Tuple[List[Formula], Formula]:
         premises,_ = _formula(premises)
         premises = _seperate_premises(premises)
         goal,_ = _formula(goal)
-        
+        print(premises)
         return ([_pre_modification(premise) for premise in premises ], _pre_modification(goal)) 
     
     goal,_ = _formula(fol)

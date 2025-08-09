@@ -116,7 +116,7 @@ class Operation(Enum):
         return self in {
             Operation.AND, Operation.OR, Operation.IMPLIE, Operation.REVERSED_IMPLIE,
             Operation.NOR, Operation.NAND, Operation.NOT_IMPLIE, Operation.NOT_REVERSED_IMPLIE,
-            Operation.AND_IMPLIE_BI
+            Operation.AND_IMPLIE_BI, Operation.EQUAL
         }
 
     def is_quantifiers(self) -> bool:
