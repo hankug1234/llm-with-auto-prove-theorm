@@ -14,7 +14,8 @@ Allowed symbols:
 Naming rules:
 - Predicates: uppercase (Likes(x,y))
 - Functions: lowercase (fatherOf(x))
-- Variables: α β γ δ ε ζ η θ ι κ λ μ ν ξ ο π ρ σ τ υ φ χ ψ ω
+- Variables: one of {α β γ δ ε ζ η θ ι κ λ μ ν ξ ο π ρ σ τ υ φ χ ψ ω} (exactly one char)
+- Constants: MUST be written as [content] 
 
 Premise/conclusion format:
 - Separate premises with commas; use ⊢ before conclusion.

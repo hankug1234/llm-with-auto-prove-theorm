@@ -35,8 +35,22 @@ def _formula(formula:str) -> Tuple[Formula, str]:
     params = []
     value, remain = "", ""
     i = 0
+    flag = False
     while i < len(formula):
         ch = formula[i]
+        if flag:
+            if ch == ']':
+                flag = False
+                primitive = _primitive(value)
+                if primitive is not None:
+                    params.append(primitive)
+                    
+                value = ""
+            else:
+                value += ch  
+            i +=1
+            continue
+        
         if ch == "(":
             
             _params, remain = _formula(formula[i+1:])
@@ -58,7 +72,7 @@ def _formula(formula:str) -> Tuple[Formula, str]:
             value=""
             continue
         elif ch == ")":
-            
+
             primitive = _primitive(value)
             if primitive is not None:
                 params.append(primitive)
@@ -74,6 +88,8 @@ def _formula(formula:str) -> Tuple[Formula, str]:
             if is_operation(ch):
                 params.append(operation(ch))
             value = ""
+        elif ch == '[':
+            flag = True 
         else:
             value+=ch
         i+=1           
