@@ -52,7 +52,6 @@ class OverMaxAttemptionException(Exception):
     
 class State(TypedDict):
     history: Annotated[list[AnyMessage], add_messages]
-    premises: Annotated[list[Formula], add]
     user_instruction: SystemMessage
     mode_count: dict
     mode: Mode
@@ -185,8 +184,7 @@ class ATPagent:
                                 , Mode.INTERRUPT : 0},
                 "mode" : Mode.CORE,
                 "is_proved" : False,
-                "error" : None,
-                "premises" : self.premises
+                "error" : None
                 }
     
     def _retrive_long_term_memory(self, namespace: str ,query: str , limit: int, store:BaseStore)-> list[SearchItem]: 
@@ -316,7 +314,7 @@ class ATPagent:
             fol_formula = self._formal_language_converter(origin_answer)
             origin_request = self._current_user_request(state["history"])
             premises,goal = fol_formula
-            premises = premises + state["premises"]
+            premises = premises + self.premises
             is_proved, none_closed_branches = self.prove_system.prove(premises=premises, conclusion=goal)
             
             logging.info("##### FOL #####")
