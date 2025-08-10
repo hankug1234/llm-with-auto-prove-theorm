@@ -207,4 +207,5 @@ def pre_modification_fol2sentance(formula: Formula)->str:
                 sub_formula2 = pre_modification_fol2sentance(formula[2])
                 return  f"{sub_formula1} {operation2string(op)} {sub_formula2}"
     raise Formula2StringConvertException("formula to string convert error")
-            
+
+

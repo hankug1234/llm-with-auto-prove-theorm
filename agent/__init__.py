@@ -97,6 +97,7 @@ class ATPagent:
                     "{{RULES}}":"",
                     "{{EXAMPLES}}":""
                  }
+                 ,premises : List[Formula] = []
                  ,max_attemption : int = 5
                  ,tools : List[Callable] =[]
                  ,custom_tool_mode: bool = True
@@ -153,6 +154,10 @@ class ATPagent:
         self.prove_system = prove_system
         self.sessions = {}
         self.lock = threading.Lock()
+        self.premises = premises
+    
+    def _set_premises(self,premises: List[Formula]):
+        self.premises = premises
     
     def _make_agent_model(self):
         if self.user_instruction is None:
@@ -180,7 +185,8 @@ class ATPagent:
                                 , Mode.INTERRUPT : 0},
                 "mode" : Mode.CORE,
                 "is_proved" : False,
-                "error" : None
+                "error" : None,
+                "premises" : self.premises
                 }
     
     def _retrive_long_term_memory(self, namespace: str ,query: str , limit: int, store:BaseStore)-> list[SearchItem]: 
