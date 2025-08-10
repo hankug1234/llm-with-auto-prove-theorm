@@ -84,6 +84,10 @@ class Session:
                 del self.__sessions[self.thread_id]
             return None
 
+class ResponseParser:
+    def parse(response:AnyMessage) -> AnyMessage:
+        return response
+
 class ATPagent:
     def __init__(self
                  ,user_id : str = "admin"
@@ -97,6 +101,7 @@ class ATPagent:
                     "{{EXAMPLES}}":""
                  }
                  ,premises : List[Formula] = []
+                 ,response_parser = ResponseParser
                  ,max_attemption : int = 5
                  ,tools : List[Callable] =[]
                  ,custom_tool_mode: bool = True
@@ -154,6 +159,7 @@ class ATPagent:
         self.sessions = {}
         self.lock = threading.Lock()
         self.premises = premises
+        self.response_parser = response_parser
     
     def _set_premises(self,premises: List[Formula]):
         self.premises = premises
@@ -270,6 +276,9 @@ class ATPagent:
         try:
             message = state["history"][-1]
             response = self.chat_model.invoke([state["user_instruction"],message])
+            
+            if self.response_parser:
+                response = self.response_parser.parse(response)
             
             if self.custom_tool_mode:
                 tools = self._get_tools(response.content)
