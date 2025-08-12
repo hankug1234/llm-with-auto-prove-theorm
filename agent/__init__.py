@@ -100,7 +100,7 @@ class ATPagent:
                     "{{RULES}}":"",
                     "{{EXAMPLES}}":""
                  }
-                 ,premises : List[Formula] = []
+                 ,premises : List[Tuple[Formula,str]] = []
                  ,response_parser = ResponseParser
                  ,max_attemption : int = 5
                  ,tools : List[Callable] =[]
@@ -109,8 +109,7 @@ class ATPagent:
                  ,fol_translate_model = None
                  ,embeddings=None
                  ,fields: List[str] = []
-                 ,prove_system = Tableau()
-                 ,fol_mini_mode: bool = True):
+                 ,prove_system = Tableau()):
         
         self.custom_tool_mode = custom_tool_mode
         if len(tools) > 0:
@@ -150,19 +149,25 @@ class ATPagent:
         "fields":fields
         })
         
-        self.set_fol_translater_mode(fol_mini_mode)
-        
         self.checkpointer = MemorySaver()
         self.graph_builder = StateGraph(state_schema=State)
-        self.graph = self._build()
         self.prove_system = prove_system
         self.sessions = {}
         self.lock = threading.Lock()
-        self.premises = premises
+        self.premises = []
+        self.nl_premises = []
+        for premise, nl_premise in premises:
+            self.premises.append(premise)
+            self.nl_premises.append(nl_premise)
         self.response_parser = response_parser
+        self.set_fol_translater_mode()
+        self.graph = self._build()
     
-    def _set_premises(self,premises: List[Formula]):
-        self.premises = premises
+    def _set_premises(self,premises: List[Tuple[Formula,str]]):
+        for premise, nl_premise in premises:
+            self.premises.append(premise)
+            self.nl_premises.append(nl_premise)
+        self.set_fol_translater_mode()
     
     def _make_agent_model(self):
         if self.user_instruction is None:
@@ -202,6 +207,7 @@ class ATPagent:
         
     def _formal_language_converter(self,fol_sentance : str) -> Tuple[List[Formula], Formula]:
         _converter = pre_modification_fol_interpreter
+        
         result = self.fol_translate_model.invoke([SystemMessage(self.fol_translater_prompt),HumanMessage(fol_sentance)]).content
         if not_fol := self._get_not_fol(result):
             raise FolConvertFailException(not_fol)
@@ -405,12 +411,13 @@ class ATPagent:
         
         return self.graph_builder.compile(checkpointer=self.checkpointer,store=self.memory)
 
-    def set_fol_translater_mode(self,strict:bool):
-        self.fol_mini_mode = strict
-        if self.fol_mini_mode:
-            self.fol_translater_prompt = fol_convertor_mini
-        else: 
-            self.fol_translater_prompt = fol_convertor
+    def set_fol_translater_mode(self):
+        if len(self.nl_premises) > 0:
+            pre_defined = "\n".join([ f"- {premise}: {nl_premise}"  for premise, nl_premise in zip(self.premises,self.nl_premises)])
+        else:
+            pre_defined = "Predefined predicates dont exist"
+        self.fol_translater_prompt = fol_convertor_mini.replace("{{PREDICATE_LIST}}",pre_defined)
+        
     
     async def async_excute(self, query :str, thread_id: str = "1"):
         config = {
