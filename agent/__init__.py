@@ -207,7 +207,6 @@ class ATPagent:
         
     def _formal_language_converter(self,fol_sentance : str) -> Tuple[List[Formula], Formula]:
         _converter = pre_modification_fol_interpreter
-        
         result = self.fol_translate_model.invoke([SystemMessage(self.fol_translater_prompt),HumanMessage(fol_sentance)]).content
         if not_fol := self._get_not_fol(result):
             raise FolConvertFailException(not_fol)
