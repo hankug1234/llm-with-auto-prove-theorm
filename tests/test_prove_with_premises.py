@@ -90,7 +90,7 @@ if __name__ == "__main__":
         ] 
         tableau_prover = Tableau()
         prove_with_premises = tableau_prover.prove
-        premises, goal = interpreter("Laughs([Wizard]) ∧ Says([Wizard], [Mortality is the bedrock of existence, little one.]) ∧ Says([Wizard], [To defy it is to invite oblivion.]) ∧ ∃x (Defies(x, [Mortality]) ∧ Grants([Wizard], x))".strip())
+        premises, goal = interpreter("Laughs([Wizard]) ∧ Says([Wizard], [Mortality is the bedrock of existence, little one.]) ∧ Says([Wizard], [To defy it is to invite oblivion.]) ∧ ¬∃x (Defies(x, [Mortality]) ∧ Grants([Wizard], x))".strip())
         premises = [(interpreter(fol)[1],rule) for fol,rule in world_rules]
         print("premises: ")
         for premise in premises:

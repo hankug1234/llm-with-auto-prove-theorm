@@ -119,13 +119,26 @@ def _pre_modification(formula: Formula)->Formula:
                     return (f,queue.popleft(), _pre_modification(remain))
                 else:
                     negs = []
+                    temps = []
                     while len(queue) > 0 and isinstance(queue[0], Operation) and queue[0].is_unary_ops():
                         negs.append(queue.popleft())
                     if len(queue) > 0:
+                        
                         temp = queue.popleft() 
+                        while not (isinstance(temp,Tuple) or is_atom(temp)):
+                            temps.append(temp)
+                            temp = queue.popleft()
+                        temps.append(temp)
+                        if len(temps) == 1:
+                            temp = _pre_modification(temps[0])
+                        elif len(temps) > 1: 
+                            temp = _pre_modification(tuple(temps))
+                        else: 
+                            raise String2FormulaConvertException("string to formula convert error")
+                        
                         for neg in negs:
                             temp = (neg,temp)
-                        temp = (f,_pre_modification(temp))
+                        temp = (f,temp)
                     else:    
                         raise String2FormulaConvertException("string to formula convert error")
             else:
