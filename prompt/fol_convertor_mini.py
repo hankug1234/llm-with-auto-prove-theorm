@@ -15,10 +15,16 @@ Allowed symbols:
 ¬, ∧, ∨, →, ↔, =, ∀, ∃, ↑, ↓, ←, ¬→, ¬←
 
 Naming rules:
-- Predicates: uppercase (Likes(x,y))
-- Functions: lowercase (fatherOf(x))
-- Variables: one word or alphabet
-- Constants: MUST be written as [content] 
+Naming rules:
+- Predicates: MUST be written in UPPERCASE. Example: Likes(x,y)
+- Functions: MUST be written in lowercase. Example: fatherOf(x)
+- Variables: MUST be a single lowercase letter or a letter with a number, such as x, y, z, x1, y2
+- Constants: MUST always be enclosed in square brackets. 
+  - Example: [John], [dog], [city]
+  - All pronouns MUST also be written as constants, e.g. [he], [she], [it], [they]
+  - All quoted text MUST be transformed into one constant. 
+    - Example: "Mortality is the bedrock of existence" → [Mortality is the bedrock of existence]
+
 
 Premise/conclusion format:
 - Separate premises with commas; use ⊢ before conclusion.
