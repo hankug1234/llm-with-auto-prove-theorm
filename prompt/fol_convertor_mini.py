@@ -15,7 +15,6 @@ Allowed symbols:
 ¬, ∧, ∨, →, ↔, =, ∀, ∃, ↑, ↓, ←, ¬→, ¬←
 
 Naming rules:
-Naming rules:
 - Predicates: MUST be written in UPPERCASE. Example: Likes(x,y)
 - Functions: MUST be written in lowercase. Example: fatherOf(x)
 - Variables: MUST be a single lowercase letter or a letter with a number, such as x, y, z, x1, y2
