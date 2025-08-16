@@ -2,6 +2,7 @@ from typing import List, Tuple,  Optional, Dict, Set
 import itertools, sys 
 sys.path.append(".")
 from auto_prove import unify_list, is_atom, Formula, Notated, Term, Function, Var, Operation, Predicate, Constant, Atom
+import logging
 
 class Tableau:
 # --- Skolem 함수 인덱스 관리 ---------------------------------------------
@@ -454,7 +455,9 @@ class Tableau:
         self._reset_reflex_seen()
         self._reset_terms_in_branch()
         root_branch = self._build_initial_branch(premises, conclusion)
+        logging.info("##### EXPAND #####")
         tableau = self._expand([root_branch], qdepth, equality) # 기존 expand 사용
+        logging.info("##### CLOSE CHECKING #####")
         branch_state = self._closed(tableau)
         none_closed_branches = [branch for is_closed, branch in zip(branch_state, tableau) if is_closed is False]
         return (all(branch_state), none_closed_branches)

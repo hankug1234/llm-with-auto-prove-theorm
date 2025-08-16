@@ -95,4 +95,4 @@ def test_interpreter():
     
 if __name__ == "__main__":
     from auto_prove.interpreter import pre_modification_fol_interpreter as interpreter  
-    print(interpreter("q = [If you are the truth-teller, would you say you are the truth-teller?], ∀x (Gatekeeper(x) → (Answer(x, q) = Yes ↔ TruthTeller(x))) ⊢ ∀x (Answer(x, q) = Yes → TruthTeller(x)) ".strip()))
+    print(interpreter("∃x (Wizard(x) ∧ (Laughs(x) ∧ (∃y (Human(y) ∧ (Says(x, (Mortality(y) ∧ (Bedrock(Mortality(y)) ∧ (Essence(Human(y)))))))) ∧ (∃z (Says(x, (¬(Immortality(z)) ∧ (¬(Defy(x, FundamentalLaws()))))))))))".strip()))

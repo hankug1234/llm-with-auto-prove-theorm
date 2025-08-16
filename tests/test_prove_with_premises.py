@@ -81,9 +81,17 @@ def test_prove_with_premises():
         
 if __name__ == "__main__":
         from auto_prove.interpreter import pre_modification_fol_interpreter as interpreter  
+        world_rules = [
+        ("∀x (Human(x) → Mortal(x))","Humans are mortal."),
+        ("¬(Dead(x) ∧ Alive(x))","Death and life cannot exist simultaneously."),
+        ("∀x (Wizard(x) → CanUseMagic(x))","Wizards can use magic."),
+        ("¬(Orc(x) ∧ Human(x))","Orcs and humans are distinct races."),
+        ("∀x (EnemyOf(x, y) → ¬FriendOf(x, y))","One cannot be both an enemy and a friend at the same time.")
+        ] 
         tableau_prover = Tableau()
         prove_with_premises = tableau_prover.prove
-        premises, goal = interpreter("∀x (Guard(x) → (¬FeelsSad(x) ↔ ¬Lies(x)))".strip())
+        premises, goal = interpreter("Laughs([Wizard]) ∧ Says([Wizard], [Mortality is the bedrock of existence, little one.]) ∧ Says([Wizard], [To defy it is to invite oblivion.]) ∧ ∃x (Defies(x, [Mortality]) ∧ Grants([Wizard], x))".strip())
+        premises = [(interpreter(fol)[1],rule) for fol,rule in world_rules]
         print("premises: ")
         for premise in premises:
                 print(premise)
