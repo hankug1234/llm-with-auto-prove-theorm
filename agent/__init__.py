@@ -19,10 +19,10 @@ from auto_prove.tableau import Tableau
 from auto_prove import Formula, Notated, Operation, operation2string
 from prompt.enhanced_request_by_none_closed_branches import PROMPT as enhanced_request
 from prompt.fol_convertor_mini import PROMPT as fol_convertor_mini 
-from prompt.fol_convertor import PROMPT as fol_convertor
 from prompt.agent_modelfile import PROMPT as agent_modelfile
 import threading, re
 import logging
+from html import unescape
 
 logging.basicConfig(level=logging.INFO)
 
@@ -208,10 +208,17 @@ class ATPagent:
     def _formal_language_converter(self,fol_sentance : str) -> Tuple[List[Formula], Formula]:
         _converter = pre_modification_fol_interpreter
         result = self.fol_translate_model.invoke([SystemMessage(self.fol_translater_prompt),HumanMessage(fol_sentance)]).content
-        if not_fol := self._get_not_fol(result):
-            raise FolConvertFailException(not_fol)
+        logging.info("##### FOL CONVERT #####")
+        fol = self._get_fol(result)
+        logging.info(fol)
+        
+        if fol is None:
+            raise FolConvertFailException(result)
 
-        return _converter(self._get_fol(result).strip())
+        logging.info("##### FOL CONVERTED #####")
+        converted = _converter(fol.strip())
+        logging.info(converted)
+        return  converted
     
     def _current_user_request(self,history:list[AnyMessage]) -> HumanMessage: 
         for message in history[::-1]:
@@ -251,19 +258,33 @@ class ATPagent:
             return content.strip() 
         return None 
     
-    def _get_fol(self,script:str) -> str:
-        match = re.search(r"<FOL>(.*?)</FOL>", script, re.DOTALL)
-        if match:
-            content = match.group(1)
-            return content.strip() 
-        return None 
     
-    def _get_not_fol(self,script:str) -> str:
-        match = re.search(r"<NOT_FOL>(.*?)</NOT_FOL>", script, re.DOTALL)
-        if match:
-            content = match.group(1)
-            return content.strip() 
-        return None 
+    def _get_fol(self,script: str):
+        if script is None:
+            return None
+
+        # 1) 먼저 원문에서 시도
+        pat = re.compile(r"<\s*FOL\s*>([\s\S]*?)<\s*/\s*FOL\s*>", re.IGNORECASE)
+        m = pat.search(script)
+        if m:
+            return m.group(1).strip()
+
+        # 2) HTML 이스케이프된 로그일 수도 있으니 unescape 후 재시도
+        s2 = unescape(script)
+        if s2 != script:
+            m = pat.search(s2)
+            if m:
+                return m.group(1).strip()
+
+        # 3) 컬러 코드/제어문자 제거 후 재시도 (선택)
+        # ANSI 컬러 코드 제거
+        s3 = re.sub(r"\x1b\[[0-9;]*m", "", s2)
+        if s3 != s2:
+            m = pat.search(s3)
+            if m:
+                return m.group(1).strip()
+
+        return None
     
     def _core_model(self,state:State):
         if isinstance(state["history"][-1],HumanMessage) and state["history"][-1].content.strip() == self.end_signal:
@@ -281,9 +302,6 @@ class ATPagent:
         try:
             message = state["history"][-1]
             response = self.chat_model.invoke([state["user_instruction"],message])
-            
-            if self.response_parser:
-                response = self.response_parser.parse(response)
             
             if self.custom_tool_mode:
                 tools = self._get_tools(response.content)
@@ -306,7 +324,10 @@ class ATPagent:
                             ,"mode_count" : mode_count
                             ,"is_proved" : is_proved
                             ,"error" : error}
-                     
+                    
+            if self.response_parser:
+                response = self.response_parser.parse(response)             
+                
         except Exception as e:
             logging.error(f"core model : {e}")
             return {"mode" : Mode.END}

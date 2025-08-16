@@ -177,7 +177,6 @@ def pre_modification_fol_interpreter(fol:str) -> Tuple[List[Formula], Formula]:
         premises,_ = _formula(premises)
         premises = _seperate_premises(premises)
         goal,_ = _formula(goal)
-        print(premises)
         return ([_pre_modification(premise) for premise in premises ], _pre_modification(goal)) 
     
     goal,_ = _formula(fol)

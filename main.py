@@ -1,6 +1,10 @@
 from agent import ATPagent 
 from custom_chat import ChatGPT
 from auto_prove.interpreter import pre_modification_fol_interpreter as interpreter
+from prompt import game_master_modelfile as modelfile
+from langchain_core.messages import AnyMessage, AIMessage
+from agent import ResponseParser
+import re
 
 '''
 todo list 
@@ -18,27 +22,36 @@ todo list
 
 if __name__ == "__main__":
     user_instruction = {
-                    "{{CONCEPT}}" : "",
-                    "{{USER_INSTRUCTION}}":"",
-                    "{{INPUT_FORMAT}}":"",
-                    "{{OUTPUT_FORMAT}}":"",
-                    "{{RULES}}":"",
-                    "{{EXAMPLES}}":""
+                    "{{CONCEPT}}" : modelfile.CONCEPT,
+                    "{{USER_INSTRUCTION}}":modelfile.USER_INSTRUCTION,
+                    "{{INPUT_FORMAT}}":modelfile.INPUT_FORMAT,
+                    "{{OUTPUT_FORMAT}}":modelfile.OUTPUT_FORMAT,
+                    "{{RULES}}":modelfile.RULES,
+                    "{{EXAMPLES}}":modelfile.EXAMPLES
                  }
-    
+    class ModelParser(ResponseParser):
+        
+        def parse(self,response:AnyMessage):
+            match = re.search(r"<GM>(.*?)</GM>", response.content, re.DOTALL)
+            if match:
+                content = match.group(1)
+                return AIMessage(content.strip())
+            
+            return response
+    parser = ModelParser()
     
     world_rules = [
-        "∀x (Human(x) → Mortal(x))",
-        "¬(Dead(x) ∧ Alive(x))",
-        "∀x (Wizard(x) → CanUseMagic(x))",
-        "¬(Orc(x) ∧ Human(x))",
-        "∀x (EnemyOf(x, y) → ¬FriendOf(x, y))"
+        ("∀x (Human(x) → Mortal(x))","Humans are mortal."),
+        ("¬(Dead(x) ∧ Alive(x))","Death and life cannot exist simultaneously."),
+        ("∀x (Wizard(x) → CanUseMagic(x))","Wizards can use magic."),
+        ("¬(Orc(x) ∧ Human(x))","Orcs and humans are distinct races."),
+        ("∀x (EnemyOf(x, y) → ¬FriendOf(x, y))","One cannot be both an enemy and a friend at the same time.")
     ] 
     
-    premises = [interpreter(rule)[1] for rule in world_rules]
+    premises = [(interpreter(fol),rule) for fol,rule in world_rules]
     
     #chat = ChatGPT(model_name="gpt-4o",buffer_length = 3000 ,max_tokens = 15000, timeout=60, max_retries=1,debug_mode_open=False)
-    agent = ATPagent(user_instruction=None,premises=premises)
+    agent = ATPagent(user_instruction=user_instruction,premises=premises,response_parser=parser)
     session = agent.get_sesesion()
     
     while True:
