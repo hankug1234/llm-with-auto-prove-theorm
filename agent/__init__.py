@@ -102,7 +102,7 @@ class ATPagent:
                  }
                  ,premises : List[Tuple[Formula,str]] = []
                  ,response_parser = ResponseParser
-                 ,max_attemption : int = 5
+                 ,max_attemption : int = 3
                  ,tools : List[Callable] =[]
                  ,custom_tool_mode: bool = True
                  ,chat_model = None
@@ -248,6 +248,7 @@ class ATPagent:
         answer:str, premises:List[Formula], goal:Formula) -> str:
         
         branches = [[pre_modification_fol2sentance(notate[1]) for notate in branch] for branch in branches]
+        branches = [[f for f in branch if f is not None] for branch in branches ]
         rows = []
         for i, branch in enumerate(branches):
             if len(branch) >= 2:
@@ -308,18 +309,17 @@ class ATPagent:
         if isinstance(state["history"][-1],HumanMessage) and state["history"][-1].content.strip() == self.end_signal:
             logging.info("##### MEET END SIGNAL #####")
             return {"mode" : Mode.END}
+        
         logging.info("##### CALL LLM #####")
         mode_count = state["mode_count"]
         error, is_proved = state["error"], state["is_proved"]
         response = None 
         message = None
         
-        if mode_count[state["mode"]] > self.max_attemption:
-            return {"mode" : Mode.INTERRUPT}
-        
         try:
             message = state["history"][-1]
             response = self.chat_model.invoke([state["user_instruction"],message])
+            #response = AIMessage("<GM>you never be immortal</GM>")
             
             if self.custom_tool_mode:
                 tools = self._get_tools(response.content)
@@ -350,8 +350,6 @@ class ATPagent:
             logging.error(f"core model : {e}")
             return {"mode" : Mode.END}
         
-        mode_count[Mode.ENHANCED] = 0
-        mode_count[Mode.TOOL] = 0
         return {"history": [response]
                 ,"mode": Mode.PROVE
                 ,"mode_count" : mode_count
@@ -378,11 +376,11 @@ class ATPagent:
             logging.info("##### FOL END #####")
             
             if not is_proved:
-                request = self._enhaned_request(none_closed_branches,origin_request,origin_answer,premises,goal)
+                logging.info("##### ENHANCED REQUEST #####")
+                request = self._enhaned_request(none_closed_branches,origin_request.content,origin_answer,premises,goal)
                 mode_count[Mode.ENHANCED] += 1
                 mode_count[Mode.TOOL] = 0
                 
-                logging.info("##### ENHANCED REQUEST #####")
                 logging.info(request)
                 logging.info("##### ENHANCED REQUEST END #####")
                 
@@ -410,29 +408,36 @@ class ATPagent:
         
         mode_count = state["mode_count"]
         error, is_proved = state["error"], state["is_proved"]
-        
-        if any([True if v > self.max_attemption else False for v in mode_count.values()]):
+
+        if state["mode"] == Mode.ENHANCED  and any([True if v > self.max_attemption else False for v in mode_count.values()]):
             response = Return(ok=False, error=OverMaxAttemptionException())
             user_question = interrupt(response)
-        else:     
+
+        elif state["mode"] == Mode.ENHANCED  or state["mode"] == Mode.TOOL:
+            return { "history" :[]
+                    ,"mode": Mode.CORE
+                    ,"mode_count" : mode_count
+                    ,"is_proved" : False
+                    ,"error" : None}
+        else :
             origin_answer = state["history"][-1].content
             response = Return(ok=is_proved ,value=origin_answer, error=error)
             user_question = interrupt(response)
-            
+        
         mode_count[Mode.ENHANCED] = 0
-        mode_count[Mode.TOOL] = 0
+        mode_count[Mode.TOOL] = 0            
         return {"history" : [HumanMessage(user_question)]
                 ,"mode": Mode.CORE
                 ,"mode_count" : mode_count
-                ,"is_proved" : False
+                ,"is_proved" : is_proved
                 ,"error" : None}
     
     def _route(self,state:State):
         if state["mode"] == Mode.END:
             return END
-        elif state["mode"] == Mode.TOOL or state["mode"] == Mode.CORE:
+        elif state["mode"] == Mode.CORE:
             return "core_model"
-        elif state["mode"] == Mode.INTERRUPT:
+        elif state["mode"] == Mode.INTERRUPT or state["mode"] == Mode.ENHANCED or state["mode"] == Mode.TOOL :
             return "interrupt" 
         else:
             return "auto_prove"
@@ -444,8 +449,9 @@ class ATPagent:
         self.graph_builder.add_node("interrupt",self._interrupt)
         self.graph_builder.add_edge(START,"init")
         self.graph_builder.add_edge("init","core_model")
-        self.graph_builder.add_conditional_edges("core_model",self._route,["auto_prove","core_model","interrupt",END])
-        self.graph_builder.add_conditional_edges("auto_prove",self._route,["interrupt","core_model"])
+        self.graph_builder.add_conditional_edges("core_model",self._route,["auto_prove","interrupt",END])
+        self.graph_builder.add_edge("auto_prove","interrupt")
+        self.graph_builder.add_edge("interrupt", "core_model")
         
         return self.graph_builder.compile(checkpointer=self.checkpointer,store=self.memory)
 
@@ -492,9 +498,8 @@ class ATPagent:
                     query = yield response
                     query = Command(resume=query)
                 else:
-                    return
-               
-                
+                    return 
+                 
         session = make_session()
         next(session)
         self.sessions[thread_id] = session
