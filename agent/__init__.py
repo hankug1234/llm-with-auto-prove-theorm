@@ -169,6 +169,12 @@ class ATPagent:
             self.nl_premises.append(nl_premise)
         self.set_fol_translater_mode()
     
+    def _remove_premises(self, premises):
+        for premise, nl_premise in premises: 
+            self.premises.remove(premise)
+            self.nl_premises.remove(nl_premise)
+        self.set_fol_translater_mode()
+    
     def _make_agent_model(self):
         if self.user_instruction is None:
             return ""
@@ -204,6 +210,18 @@ class ATPagent:
     def _save_long_term_memory(self, namespace: str, value: dict[str, Any], store:BaseStore):
         store.put((self.user_id,namespace),str(uuid.uuid4()),value)
         
+    def _natural2formal(self,natural : str) -> str:
+        result = self.fol_translate_model.invoke([SystemMessage(self.fol_translater_prompt),HumanMessage(natural)]).content
+        fol = self._get_fol(result)
+        
+        if fol is None:
+            raise FolConvertFailException(result)
+        return fol
+    
+    def _fol2Formula(self, fol) -> Formula: 
+        _converter = pre_modification_fol_interpreter
+        converted = _converter(fol.strip())
+        return converted[1]
         
     def _formal_language_converter(self,fol_sentance : str) -> Tuple[List[Formula], Formula]:
         _converter = pre_modification_fol_interpreter

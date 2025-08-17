@@ -1,0 +1,22 @@
+[
+  {
+    "formula": "∀x (Human(x) → Mortal(x))",
+    "description": "Humans are mortal."
+  },
+  {
+    "formula": "¬(Dead(x) ∧ Alive(x))",
+    "description": "Death and life cannot exist simultaneously."
+  },
+  {
+    "formula": "∀x (Wizard(x) → CanUseMagic(x))",
+    "description": "Wizards can use magic."
+  },
+  {
+    "formula": "¬(Orc(x) ∧ Human(x))",
+    "description": "Orcs and humans are distinct races."
+  },
+  {
+    "formula": "∀x (EnemyOf(x, y) → ¬FriendOf(x, y))",
+    "description": "One cannot be both an enemy and a friend at the same time."
+  }
+]
