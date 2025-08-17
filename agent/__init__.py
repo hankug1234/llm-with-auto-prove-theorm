@@ -53,10 +53,11 @@ class OverMaxAttemptionException(Exception):
 class State(TypedDict):
     history: Annotated[list[AnyMessage], add_messages]
     user_instruction: SystemMessage
-    mode_count: dict
     mode: Mode
     is_proved: bool 
     error: Exception
+    tool_count: int = 0
+    enhance_count: int = 0
 
 class Return(TypedDict):
     ok: bool 
@@ -195,10 +196,8 @@ class ATPagent:
         logging.info("##### INITIALIZED #####")
         return {"history" : state["history"], 
                 "user_instruction" : user_instruction,
-                "mode_count" : {Mode.ENHANCED : 0
-                                , Mode.TOOL : 0
-                                , Mode.CORE : 0
-                                , Mode.INTERRUPT : 0},
+                "tool_count" : 0,
+                "enhance_count" : 0,
                 "mode" : Mode.CORE,
                 "is_proved" : False,
                 "error" : None
@@ -311,35 +310,32 @@ class ATPagent:
             return {"mode" : Mode.END}
         
         logging.info("##### CALL LLM #####")
-        mode_count = state["mode_count"]
         error, is_proved = state["error"], state["is_proved"]
         response = None 
         message = None
         
         try:
             message = state["history"][-1]
-            response = self.chat_model.invoke([state["user_instruction"],message])
-            #response = AIMessage("<GM>you never be immortal</GM>")
+            #response = self.chat_model.invoke([state["user_instruction"],message])
+            response = AIMessage("<GM>you never be immortal</GM>")
             
             if self.custom_tool_mode:
                 tools = self._get_tools(response.content)
                 if tools:
                     tool_call_results = "\n".join([f"{k} = {v}" for k,v in self.tools.tools_calling(tools)])
-                    mode_count[Mode.ENHANCED] = 0
-                    mode_count[Mode.TOOL] += 1
                     return {"history": [response,SystemMessage(tool_call_results)]
                             ,"mode":Mode.TOOL
-                            ,"mode_count" : mode_count
+                            ,"tool_count" : state["tool_count"] + 1
+                            ,"enhance_count" : state["enhance_count"]
                             ,"is_proved" : is_proved
                             ,"error" : error}
             else:
                 if response.tool_calls:
                     tool_call_results = self.tools.invoke({"messages": [response]})['messages'] 
-                    mode_count[Mode.ENHANCED] = 0
-                    mode_count[Mode.TOOL] += 1
                     return {"history": [response,tool_call_results]
                             ,"mode":Mode.TOOL
-                            ,"mode_count" : mode_count
+                            ,"tool_count" : state["tool_count"] + 1
+                            ,"enhance_count" : state["enhance_count"]
                             ,"is_proved" : is_proved
                             ,"error" : error}
                     
@@ -352,14 +348,14 @@ class ATPagent:
         
         return {"history": [response]
                 ,"mode": Mode.PROVE
-                ,"mode_count" : mode_count
+                ,"tool_count" : state["tool_count"]
+                ,"enhance_count" : state["enhance_count"]
                 ,"is_proved" : is_proved
                 ,"error" : error}
     
     def _auto_prove(self,state:State):
         is_proved,error = False,None
         origin_answer = state["history"][-1].content
-        mode_count = state["mode_count"]
         
         try:
             fol_formula = self._formal_language_converter(origin_answer)
@@ -378,15 +374,13 @@ class ATPagent:
             if not is_proved:
                 logging.info("##### ENHANCED REQUEST #####")
                 request = self._enhaned_request(none_closed_branches,origin_request.content,origin_answer,premises,goal)
-                mode_count[Mode.ENHANCED] += 1
-                mode_count[Mode.TOOL] = 0
-                
                 logging.info(request)
                 logging.info("##### ENHANCED REQUEST END #####")
                 
                 return {"history" : [HumanMessage(request)]
                         ,"mode": Mode.ENHANCED
-                        ,"mode_count" : mode_count
+                        ,"tool_count" : state["tool_count"]
+                        ,"enhance_count" : state["enhance_count"] + 1
                         ,"is_proved" : is_proved
                         ,"error" : error}        
              
@@ -400,35 +394,35 @@ class ATPagent:
         
         return {
                 "mode": Mode.INTERRUPT
-                ,"mode_count" : mode_count
+                ,"tool_count" : state["tool_count"]
+                ,"enhance_count" : state["enhance_count"]
                 ,"is_proved" : is_proved
                 ,"error" : error} 
 
     def _interrupt(self,state:State):
         
-        mode_count = state["mode_count"]
         error, is_proved = state["error"], state["is_proved"]
 
-        if state["mode"] == Mode.ENHANCED  and any([True if v > self.max_attemption else False for v in mode_count.values()]):
+        if state["mode"] == Mode.ENHANCED  and (state["tool_count"] > self.max_attemption  or state["enhance_count"] > self.max_attemption ):
             response = Return(ok=False, error=OverMaxAttemptionException())
             user_question = interrupt(response)
 
-        elif state["mode"] == Mode.ENHANCED  or state["mode"] == Mode.TOOL:
+        elif (state["mode"] == Mode.ENHANCED  or state["mode"] ==  Mode.TOOL) and not (state["tool_count"] > self.max_attemption  or state["enhance_count"] > self.max_attemption ):
             return { "history" :[]
                     ,"mode": Mode.CORE
-                    ,"mode_count" : mode_count
+                    ,"tool_count" : state["tool_count"]
+                    ,"enhance_count" : state["enhance_count"]
                     ,"is_proved" : False
                     ,"error" : None}
         else :
             origin_answer = state["history"][-1].content
             response = Return(ok=is_proved ,value=origin_answer, error=error)
             user_question = interrupt(response)
-        
-        mode_count[Mode.ENHANCED] = 0
-        mode_count[Mode.TOOL] = 0            
+                      
         return {"history" : [HumanMessage(user_question)]
                 ,"mode": Mode.CORE
-                ,"mode_count" : mode_count
+                ,"tool_count" : 0
+                ,"enhance_count" : 0
                 ,"is_proved" : is_proved
                 ,"error" : None}
     
