@@ -81,6 +81,7 @@ def test_prove_with_premises():
         
 if __name__ == "__main__":
         from auto_prove.interpreter import pre_modification_fol_interpreter as interpreter  
+        from auto_prove.interpreter import fol2sentance
         world_rules = [
         ("∀x (Human(x) → Mortal(x))","Humans are mortal."),
         ("¬(Dead(x) ∧ Alive(x))","Death and life cannot exist simultaneously."),
@@ -92,17 +93,21 @@ if __name__ == "__main__":
         prove_with_premises = tableau_prover.prove
         premises, goal = interpreter("Laughs([Wizard]) ∧ Says([Wizard], [Mortality is the bedrock of existence, little one.]) ∧ Says([Wizard], [To defy it is to invite oblivion.]) ∧ ¬∃x (Defies(x, [Mortality]) ∧ Grants([Wizard], x))".strip())
         premises = [(interpreter(fol)[1],rule) for fol,rule in world_rules]
-        print("premises: ")
-        for premise in premises:
-                print(premise)
-        print("goal: ")
-        print(goal)
-        print()
-        print()
-        result, branches = prove_with_premises(premises, goal, qdepth=5)
         
-        print("none cloesed branches: ")        
-        for branch in branches:
-                print(branch)
-        print("result: ")
-        print(result)
+        
+        print(fol2sentance(goal))
+        
+        # print("premises: ")
+        # for premise in premises:
+        #         print(premise)
+        # print("goal: ")
+        # print(goal)
+        # print()
+        # print()
+        # result, branches = prove_with_premises(premises, goal, qdepth=5)
+        
+        # print("none cloesed branches: ")        
+        # for branch in branches:
+        #         print(branch)
+        # print("result: ")
+        # print(result)

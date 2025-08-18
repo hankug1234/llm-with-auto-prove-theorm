@@ -195,28 +195,23 @@ def pre_modification_fol_interpreter(fol:str) -> Tuple[List[Formula], Formula]:
     goal,_ = _formula(fol)
     return ([], _pre_modification(goal))
 
-def _term2string(term:Term)->str:
-    pass
 
-def _formula2string(formula:Formula)->str:
-    pass
-
-def pre_modification_fol2sentance(formula: Formula)->str:
+def fol2sentance(formula: Formula)->str:
     if is_atom(formula):
-        return _formula2string(formula)
+        return str(formula)
     else:
         if isinstance(formula,tuple):
             op = formula[0]
             if op.is_quantifiers():
-                 var = _term2string(formula[1])
-                 sub_formula1 = pre_modification_fol2sentance(formula[2])
+                 var = str(formula[1])
+                 sub_formula1 = fol2sentance(formula[2])
                  return f"{operation2string(op)}{var} {sub_formula1}"
             elif op.is_unary_ops():
-                sub_formula1 = pre_modification_fol2sentance(formula[1])
+                sub_formula1 = fol2sentance(formula[1])
                 return f"{operation2string(op)}{sub_formula1}"
             else:
-                sub_formula1 = pre_modification_fol2sentance(formula[1])
-                sub_formula2 = pre_modification_fol2sentance(formula[2])
+                sub_formula1 = fol2sentance(formula[1])
+                sub_formula2 = fol2sentance(formula[2])
                 return  f"{sub_formula1} {operation2string(op)} {sub_formula2}"
     raise Formula2StringConvertException("formula to string convert error")
 

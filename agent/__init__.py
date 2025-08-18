@@ -1,7 +1,7 @@
 from enum import Enum
 import uuid,sys 
 sys.path.append(".")
-from auto_prove.interpreter import pre_modification_fol_interpreter, pre_modification_fol2sentance
+from auto_prove.interpreter import pre_modification_fol_interpreter, fol2sentance
 from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_ollama import OllamaEmbeddings
@@ -246,7 +246,7 @@ class ATPagent:
     def _enhaned_request(self, branches: List[List[Notated]], request:str,\
         answer:str, premises:List[Formula], goal:Formula) -> str:
         
-        branches = [[pre_modification_fol2sentance(notate[1]) for notate in branch] for branch in branches]
+        branches = [[fol2sentance(notate[1]) for notate in branch] for branch in branches]
         branches = [[f for f in branch if f is not None] for branch in branches ]
         rows = []
         for i, branch in enumerate(branches):
@@ -258,8 +258,8 @@ class ATPagent:
             rows.append(row)
         branches = '\n'.join(rows)
         
-        target = pre_modification_fol2sentance(goal)
-        premises = [f" {i}. {pre_modification_fol2sentance(premise)}" for i,premise in enumerate(premises)]
+        target = fol2sentance(goal)
+        premises = [f" {i}. {fol2sentance(premise)}" for i,premise in enumerate(premises)]
         premises = "\n".join(premises)
         
         return enhanced_request\

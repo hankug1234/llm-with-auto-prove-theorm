@@ -37,9 +37,9 @@ class Predicate:
         self.name = name
         self.args = args
     def __repr__(self):
-        return f"predicate {self.name}({', '.join(map(str, self.args))})"
+        return f"predicate_{self.name}({', '.join(map(str, self.args))})"
     def __str__(self):
-        return f"predicate {self.name}({', '.join(map(str, self.args))})"
+        return f"predicate_{self.name}({', '.join(map(str, self.args))})"
     def __eq__(self, other):
         return (
             isinstance(other, Predicate)
@@ -55,9 +55,9 @@ class Var:
     def __init__(self, name: str):
         self.name = name
     def __repr__(self):
-        return "var " + self.name
+        return "variable_" + self.name
     def __str__(self):
-        return "var " + self.name
+        return "variable_" + self.name
     def __eq__(self, other):
         return isinstance(other, Var) and self.name == other.name
     def __hash__(self):
@@ -68,9 +68,9 @@ class Function:
         self.name = name
         self.args = args
     def __repr__(self):
-        return f"function {self.name}({', '.join(map(str, self.args))})"
+        return f"function_{self.name}({', '.join(map(str, self.args))})"
     def __str__(self):
-        return f"function {self.name}({', '.join(map(str, self.args))})"
+        return f"function_{self.name}({', '.join(map(str, self.args))})"
     def __eq__(self, other):
         return (
             isinstance(other, Function)
@@ -85,9 +85,9 @@ class Constant:
     def __init__(self, const: str):
         self.const = const 
     def __repr__(self):
-        return f"constance {self.const}"
+        return f"constance_{self.const}"
     def __str__(self):
-        return f"constance {self.const}"
+        return f"constance_{self.const}"
     def __eq__(self, other):
         return isinstance(other, Constant) and self.const == other.const
     def __hash__(self):

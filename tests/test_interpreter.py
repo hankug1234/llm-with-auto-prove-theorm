@@ -3,7 +3,7 @@ sys.path.append(".")
 from auto_prove import Function, Var, Operation, Predicate, Constant
 
 def test_interpreter():
-    from auto_prove.interpreter import pre_modification_fol_interpreter as interpreter, pre_modification_fol2sentance as de_interpreter  
+    from auto_prove.interpreter import pre_modification_fol_interpreter as interpreter, fol2sentance as de_interpreter  
      # 1. 기본 유효   P(a),  ∀x( P(x) → Q(x) ) ⊢ Q(a)
     prem1 = Predicate("P", [Constant("a")])
     prem2 = (Operation.ALL, Var("x"),
