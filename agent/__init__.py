@@ -35,7 +35,7 @@ class Mode(Enum):
     ENHANCED = "enhanced"
     TOOL = "tool"
     END = "end"
-    INTERRUPT = "interrupt"
+    DECISION = "decision"
     PROVE = "prove"
     
 class ChatModelNoneException(Exception):
@@ -78,9 +78,8 @@ class Session:
     
     def send(self, query: str):
         try:
-            return self.__sessions[self.thread_id].send(query)  # yield에 값 전달 후 다음 yield까지 실행
+            return self.__sessions[self.thread_id].send(query)
         except StopIteration:
-            logging.info("##### iteration end #####")
             with self.lock:
                 del self.__sessions[self.thread_id]
             return None
@@ -130,11 +129,9 @@ class ATPagent:
             embeddings = OllamaEmbeddings(model="llama3")
         
         if chat_model is None:
-            #chat_model = ChatOllama(model="gemma3:12b").with_structured_output(Response,method="json_schema")
             chat_model = ChatOllama(model="gemma3:12b")
             
         if fol_translate_model is None:
-            #fol_translate_model = ChatOllama(model="gemma3:12b").with_structured_output(TranslateResponse,method="json_schema")
             fol_translate_model = ChatOllama(model="gemma3:12b")
         
         if chat_model is None:
@@ -281,21 +278,17 @@ class ATPagent:
         if script is None:
             return None
 
-        # 1) 먼저 원문에서 시도
         pat = re.compile(r"<\s*FOL\s*>([\s\S]*?)<\s*/\s*FOL\s*>", re.IGNORECASE)
         m = pat.search(script)
         if m:
             return m.group(1).strip()
 
-        # 2) HTML 이스케이프된 로그일 수도 있으니 unescape 후 재시도
         s2 = unescape(script)
         if s2 != script:
             m = pat.search(s2)
             if m:
                 return m.group(1).strip()
 
-        # 3) 컬러 코드/제어문자 제거 후 재시도 (선택)
-        # ANSI 컬러 코드 제거
         s3 = re.sub(r"\x1b\[[0-9;]*m", "", s2)
         if s3 != s2:
             m = pat.search(s3)
@@ -305,9 +298,6 @@ class ATPagent:
         return None
     
     def _core_model(self,state:State):
-        if isinstance(state["history"][-1],HumanMessage) and state["history"][-1].content.strip() == self.end_signal:
-            logging.info("##### MEET END SIGNAL #####")
-            return {"mode" : Mode.END}
         
         logging.info("##### CALL LLM #####")
         error, is_proved = state["error"], state["is_proved"]
@@ -316,8 +306,7 @@ class ATPagent:
         
         try:
             message = state["history"][-1]
-            #response = self.chat_model.invoke([state["user_instruction"],message])
-            response = AIMessage("<GM>you never be immortal</GM>")
+            response = self.chat_model.invoke([state["user_instruction"],message])
             
             if self.custom_tool_mode:
                 tools = self._get_tools(response.content)
@@ -393,46 +382,43 @@ class ATPagent:
             logging.error(f"auto prove : {e}")
         
         return {
-                "mode": Mode.INTERRUPT
+                "mode": Mode.DECISION
                 ,"tool_count" : state["tool_count"]
                 ,"enhance_count" : state["enhance_count"]
                 ,"is_proved" : is_proved
                 ,"error" : error} 
 
-    def _interrupt(self,state:State):
+    def _decision(self,state:State):
         
         error, is_proved = state["error"], state["is_proved"]
+        tool_count, enhance_count = state["tool_count"], state["enhance_count"]
+        mode, max = state["mode"], self.max_attemption
 
-        if state["mode"] == Mode.ENHANCED  and (state["tool_count"] > self.max_attemption  or state["enhance_count"] > self.max_attemption ):
-            response = Return(ok=False, error=OverMaxAttemptionException())
-            user_question = interrupt(response)
+        if (mode == Mode.ENHANCED  and  enhance_count  > max) or  (mode == Mode.TOOL  and tool_count  > max) :
+            is_proved, error = False, OverMaxAttemptionException()
 
-        elif (state["mode"] == Mode.ENHANCED  or state["mode"] ==  Mode.TOOL) and not (state["tool_count"] > self.max_attemption  or state["enhance_count"] > self.max_attemption ):
-            return { "history" :[]
-                    ,"mode": Mode.CORE
+        elif (mode == Mode.ENHANCED and enhance_count <= max) or (mode ==  Mode.TOOL and not tool_count <= max):
+            return { "mode": Mode.CORE
                     ,"tool_count" : state["tool_count"]
                     ,"enhance_count" : state["enhance_count"]
                     ,"is_proved" : False
                     ,"error" : None}
-        else :
-            origin_answer = state["history"][-1].content
-            response = Return(ok=is_proved ,value=origin_answer, error=error)
-            user_question = interrupt(response)
                       
-        return {"history" : [HumanMessage(user_question)]
-                ,"mode": Mode.CORE
+        return {
+                "mode": Mode.END
                 ,"tool_count" : 0
                 ,"enhance_count" : 0
                 ,"is_proved" : is_proved
-                ,"error" : None}
+                ,"error" : error
+                }
     
     def _route(self,state:State):
         if state["mode"] == Mode.END:
             return END
         elif state["mode"] == Mode.CORE:
             return "core_model"
-        elif state["mode"] == Mode.INTERRUPT or state["mode"] == Mode.ENHANCED or state["mode"] == Mode.TOOL :
-            return "interrupt" 
+        elif state["mode"] == Mode.DECISION or state["mode"] == Mode.ENHANCED or state["mode"] == Mode.TOOL :
+            return "end_or_loop_decision" 
         else:
             return "auto_prove"
     
@@ -440,12 +426,12 @@ class ATPagent:
         self.graph_builder.add_node("init",self._init_context)
         self.graph_builder.add_node("core_model",self._core_model)
         self.graph_builder.add_node("auto_prove",self._auto_prove)
-        self.graph_builder.add_node("interrupt",self._interrupt)
+        self.graph_builder.add_node("end_or_loop_decision",self._decision)
         self.graph_builder.add_edge(START,"init")
         self.graph_builder.add_edge("init","core_model")
-        self.graph_builder.add_conditional_edges("core_model",self._route,["auto_prove","interrupt",END])
-        self.graph_builder.add_edge("auto_prove","interrupt")
-        self.graph_builder.add_edge("interrupt", "core_model")
+        self.graph_builder.add_conditional_edges("core_model",self._route,["auto_prove","end_or_loop_decision",END])
+        self.graph_builder.add_edge("auto_prove","end_or_loop_decision")
+        self.graph_builder.add_edge("end_or_loop_decision", "core_model")
         
         return self.graph_builder.compile(checkpointer=self.checkpointer,store=self.memory)
 
@@ -468,7 +454,6 @@ class ATPagent:
             yield event
             
     def get_sesesion(self):
-        
         thread_id = None 
         if len(self.sessions.keys()) == 0:
             thread_id = str(0)
@@ -481,18 +466,37 @@ class ATPagent:
             }
         }
         graph = self.graph 
+        
+        if self.tools:
+            user_instruction = SystemMessage(self.tools.get_template(self._make_agent_model()))
+        else:
+            user_instruction = SystemMessage(self._make_agent_model())
                     
         def make_session():
             query = yield
-            query = {"history":[HumanMessage(query)]}
+            state = {
+                    "history" : [HumanMessage(query)], 
+                    "user_instruction" : user_instruction,
+                    "tool_count" : 0,
+                    "enhance_count" : 0,
+                    "mode" : Mode.CORE,
+                    "is_proved" : False,
+                    "error" : None
+                    }
+            
             while True: 
-                response = graph.invoke(query,config=config)
-                response = response.get("__interrupt__")
-                if response is not None:
-                    query = yield response
-                    query = Command(resume=query)
-                else:
-                    return 
+                state = graph.invoke(state,config=config)
+                response = Return(ok=state["is_proved"], value=state["history"][-1].content, error=state["error"])
+                query = yield response
+                
+                if query == self.end_signal:
+                    logging.info(f"##### THREAD-{thread_id} END #####")
+                    return
+                 
+                state["mode"] = Mode.CORE
+                state["history"] = [HumanMessage(query)]
+                state["is_proved"] = False,
+                state["error"] = None
                  
         session = make_session()
         next(session)
