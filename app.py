@@ -94,7 +94,7 @@ def load_rulebook_file(filename: str, rules: list[str], log_text: str):
             desc = item.get("description")
             if isinstance(formula, str) and isinstance(desc, str):
                 new_rules.append(f"{desc} : {formula}")
-                premises.append((agent._fol2Formula(formula),desc))
+                premises.append((agent._fol2formula(formula)[1],desc))
             else:
                 # 형식 불일치시 간단히 스킵
                 continue
@@ -127,9 +127,9 @@ def add_rule(rule_text: str, rules: list[str], log_text: str):
         return gr.update(), rules, log_text, fmt_rules_md(rules), gr.update(choices=rules_to_choices(rules), value=None)
     # Deduplicate while preserving order
     if rule_text not in rules:
-        fol = agent._natural2formal(rule_text)
+        fol = agent._natural2fol(rule_text)
         rules = rules + [f"{rule_text} : {fol}"]
-        agent._set_premises([(agent._fol2Formula(fol),rule_text)])
+        agent._set_premises([(agent._fol2formula(fol)[1],rule_text)])
         log_text = append_log(log_text, f'Rule added: "{rule_text} : {fol}"')
     # 입력칸 비우기 + 룰 목록/드롭다운 갱신
     return (
@@ -143,7 +143,7 @@ def add_rule(rule_text: str, rules: list[str], log_text: str):
 def clear_rules(rules: list[str], log_text: str):
     if rules:
         log_text = append_log(log_text, f"All rules cleared. (count={len(rules)})")
-    deleted = [(agent._fol2Formula(rule.split(":")[1].strip()),rule.split(":")[0].strip()) for rule in rules]
+    deleted = [(agent._fol2formula(rule.split(":")[1].strip())[1],rule.split(":")[0].strip()) for rule in rules]
     agent._remove_premises(deleted)
     # 드롭다운도 비우기
     return [], log_text, fmt_rules_md([]), gr.update(choices=[], value=None)
@@ -155,7 +155,7 @@ def delete_selected_rule(selected_choice: str | None, rules: list[str], log_text
         # 선택 안 했거나 인덱스 불가 → 상태만 다시 반영
         return rules, log_text, fmt_rules_md(rules), gr.update(choices=rules_to_choices(rules), value=None)
     removed = rules[idx]
-    deleted = [(agent._fol2Formula(removed.split(":")[1].strip()),removed.split(":")[0].strip())]
+    deleted = [(agent._fol2formula(removed.split(":")[1].strip())[1] ,removed.split(":")[0].strip())]
     agent._remove_premises(deleted)
     new_rules = rules[:idx] + rules[idx+1:]
     log_text = append_log(log_text, f'Removed rule #{idx+1}: "{removed}"')
@@ -163,7 +163,6 @@ def delete_selected_rule(selected_choice: str | None, rules: list[str], log_text
 
 # ---------- Chat handling ----------
 def handle_chat(user_msg: str, chat_history: list, rules: list[str], log_text: str):
-    
     global agent, session
     
     user = (user_msg or "").strip()
@@ -174,7 +173,7 @@ def handle_chat(user_msg: str, chat_history: list, rules: list[str], log_text: s
 
     response = None
 
-    response = session.send(user)[0].value 
+    response = session.send(user)
     
     ok = response["ok"]
     error = str(response["error"]) 

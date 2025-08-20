@@ -8,9 +8,9 @@ PROMPT = """
         {{ TOOL DEFINITIONS IN JSON SCHEMA }}
 
         Example when you need to call tools:
-        <function_call>[{"function": {"name": "name of function", "arguments": { "arg1": "value1" }}}]</function_call>
+        - <function_call>[{"function": {"name": "name of function", "arguments": { "arg1": "value1" }}}]</function_call>
         
-        If llm model decides that llm model needs to call one or more tools to answer, you should pass the tool request as a list in the following format:
+        - If llm model decides that llm model needs to call one or more tools to answer, you should pass the tool request as a list in the following format:
         <function_call>[{"function": {"name": "name of function", "arguments": { "arg1": "value1" }}}, {"function": {"name": "name of function2", "arguments": { "arg1": "value1",   "arg2": "value2"}}}]</function_call>
         
 

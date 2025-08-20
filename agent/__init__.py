@@ -20,12 +20,14 @@ from auto_prove import Formula, Notated, Operation, operation2string
 from prompt.enhanced_request_by_none_closed_branches import PROMPT as enhanced_request
 from prompt.fol_convertor_mini import PROMPT as fol_convertor_mini 
 from prompt.agent_modelfile import PROMPT as agent_modelfile
+from langchain_core.runnables.config import RunnableConfig
 import threading, re
 import logging
 from html import unescape
 
-logging.basicConfig(level=logging.INFO)
-
+logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s:%(message)s")
+FOL_RESULT_PATTERN = r"<\s*FOL\s*>([\s\S]*?)<\s*/\s*FOL\s*>"
+TOOL_RESULT_PATTERN = r"<\s*function_call\s*>([\s\S]*?)<\s*/\s*function_call\s*>"
 
 def add(a: List[Any], b: List[Any]):
     return a + b
@@ -176,7 +178,6 @@ class ATPagent:
     def _make_agent_model(self):
         if self.user_instruction is None:
             return ""
-        
         return agent_modelfile\
                .replace("{{CONCEPT}}",self.user_instruction["{{CONCEPT}}"])\
                .replace("{{USER_INSTRUCTION}}",self.user_instruction["{{USER_INSTRUCTION}}"])\
@@ -185,28 +186,13 @@ class ATPagent:
                .replace("{{RULES}}",self.user_instruction["{{RULES}}"])\
                .replace("{{EXAMPLES}}",self.user_instruction["{{EXAMPLES}}"])\
     
-    def _init_context(self, state : State):
-        if self.tools:
-            user_instruction = SystemMessage(self.tools.get_template(self._make_agent_model()))
-        else:
-            user_instruction = SystemMessage(self._make_agent_model())
-        logging.info("##### INITIALIZED #####")
-        return {"history" : state["history"], 
-                "user_instruction" : user_instruction,
-                "tool_count" : 0,
-                "enhance_count" : 0,
-                "mode" : Mode.CORE,
-                "is_proved" : False,
-                "error" : None
-                }
-    
     def _retrive_long_term_memory(self, namespace: str ,query: str , limit: int, store:BaseStore)-> list[SearchItem]: 
         return store.search((self.user_id, namespace), query=query, limit=limit)
     
     def _save_long_term_memory(self, namespace: str, value: dict[str, Any], store:BaseStore):
         store.put((self.user_id,namespace),str(uuid.uuid4()),value)
         
-    def _natural2formal(self,natural : str) -> str:
+    def _natural2fol(self,natural : str) -> str:
         result = self.fol_translate_model.invoke([SystemMessage(self.fol_translater_prompt),HumanMessage(natural)]).content
         fol = self._get_fol(result)
         
@@ -214,25 +200,15 @@ class ATPagent:
             raise FolConvertFailException(result)
         return fol
     
-    def _fol2Formula(self, fol) -> Formula: 
+    def _fol2formula(self, fol) -> Tuple[List[Formula], Formula]:
         _converter = pre_modification_fol_interpreter
-        converted = _converter(fol.strip())
-        return converted[1]
+        formula = _converter(fol.strip())
+        return formula
         
-    def _formal_language_converter(self,fol_sentance : str) -> Tuple[List[Formula], Formula]:
-        _converter = pre_modification_fol_interpreter
-        result = self.fol_translate_model.invoke([SystemMessage(self.fol_translater_prompt),HumanMessage(fol_sentance)]).content
-        logging.info("##### FOL CONVERT #####")
-        fol = self._get_fol(result)
-        logging.info(fol)
-        
-        if fol is None:
-            raise FolConvertFailException(result)
-
-        logging.info("##### FOL CONVERTED #####")
-        converted = _converter(fol.strip())
-        logging.info(converted)
-        return  converted
+    def _formal_language_converter(self,natural_sentance : str) -> Tuple[List[Formula], Formula]:
+        fol = self._natural2fol(natural_sentance)
+        formula = self._fol2formula(fol)
+        return  formula
     
     def _current_user_request(self,history:list[AnyMessage]) -> HumanMessage: 
         for message in history[::-1]:
@@ -265,20 +241,12 @@ class ATPagent:
         .replace("{{TARGET}}",f"- {target}")\
         .replace("{{PREMISES}}",premises)\
         .replace("{{OPEN_BRANCHES}}",branches)
-        
-    def _get_tools(self,script:str) -> str:
-        match = re.search(r"<result>(.*?)</result>", script, re.DOTALL)
-        if match:
-            content = match.group(1)
-            return content.strip() 
-        return None 
     
-    
-    def _get_fol(self,script: str):
+    def _get_result(self,script: str, pattern : str):
         if script is None:
             return None
 
-        pat = re.compile(r"<\s*FOL\s*>([\s\S]*?)<\s*/\s*FOL\s*>", re.IGNORECASE)
+        pat = re.compile(pattern, re.IGNORECASE)
         m = pat.search(script)
         if m:
             return m.group(1).strip()
@@ -297,52 +265,52 @@ class ATPagent:
 
         return None
     
-    def _core_model(self,state:State):
-        
-        logging.info("##### CALL LLM #####")
+    def _core_model(self,state:State, config: RunnableConfig):
+        thread_id = config.get("configurable", {}).get("thread_id")
         error, is_proved = state["error"], state["is_proved"]
-        response = None 
-        message = None
+        response,message = None, None 
+        tool_call_results = None
         
         try:
             message = state["history"][-1]
+            logging.info(f"thread{thread_id}:core_model:user_request={message}")
             response = self.chat_model.invoke([state["user_instruction"],message])
+            logging.info(f"thread{thread_id}:core_model:llm_response={response}")
             
             if self.custom_tool_mode:
-                tools = self._get_tools(response.content)
+                tools = self._get_result(response.content, TOOL_RESULT_PATTERN)
                 if tools:
-                    tool_call_results = "\n".join([f"{k} = {v}" for k,v in self.tools.tools_calling(tools)])
-                    return {"history": [response,SystemMessage(tool_call_results)]
-                            ,"mode":Mode.TOOL
-                            ,"tool_count" : state["tool_count"] + 1
-                            ,"enhance_count" : state["enhance_count"]
-                            ,"is_proved" : is_proved
-                            ,"error" : error}
-            else:
-                if response.tool_calls:
-                    tool_call_results = self.tools.invoke({"messages": [response]})['messages'] 
-                    return {"history": [response,tool_call_results]
-                            ,"mode":Mode.TOOL
-                            ,"tool_count" : state["tool_count"] + 1
-                            ,"enhance_count" : state["enhance_count"]
-                            ,"is_proved" : is_proved
-                            ,"error" : error}
+                    tool_call_results = SystemMessage("\n".join([f"{k} = {v}" for k,v in self.tools.tools_calling(tools)]))
+                    
+            if response.tool_calls:
+                tool_call_results = self.tools.invoke({"messages": [response]})['messages'] 
+            
+            if tool_call_results is not None: 
+                logging.info(f"thread{thread_id}:core_model:tool_call_results={tool_call_results}")
+                return {"history": [response,tool_call_results]
+                        ,"mode":Mode.TOOL
+                        ,"tool_count" : state["tool_count"] + 1
+                        ,"enhance_count" : state["enhance_count"]
+                        ,"is_proved" : is_proved
+                        ,"error" : error}
                     
             if self.response_parser:
-                response = self.response_parser.parse(response)             
-                
-        except Exception as e:
-            logging.error(f"core model : {e}")
-            return {"mode" : Mode.END}
-        
-        return {"history": [response]
+                response = self.response_parser.parse(response)    
+            
+            return {"history": [response]
                 ,"mode": Mode.PROVE
                 ,"tool_count" : state["tool_count"]
                 ,"enhance_count" : state["enhance_count"]
                 ,"is_proved" : is_proved
-                ,"error" : error}
+                ,"error" : error}         
+                
+        except Exception as e:
+            logging.error(f"thread{thread_id}:core_model:error={e}")
+            return {"mode" : Mode.END}
+        
     
-    def _auto_prove(self,state:State):
+    def _auto_prove(self,state:State, config:RunnableConfig):
+        thread_id = config.get("configurable", {}).get("thread_id")
         is_proved,error = False,None
         origin_answer = state["history"][-1].content
         
@@ -353,18 +321,14 @@ class ATPagent:
             premises = premises + self.premises
             is_proved, none_closed_branches = self.prove_system.prove(premises=premises, conclusion=goal)
             
-            logging.info("##### FOL #####")
-            logging.info(f"premises: {premises}")
-            logging.info(f"goal: {goal}")
-            logging.info(f"proved: {is_proved}")
-            logging.info(f"not closed branches: {none_closed_branches}")
-            logging.info("##### FOL END #####")
+            logging.info(f"thread{thread_id}:auto_prove:premises={premises}")
+            logging.info(f"thread{thread_id}:auto_prove:goal={goal}")
+            logging.info(f"thread{thread_id}:auto_prove:is_proved={is_proved}")
+            logging.info(f"thread{thread_id}:auto_prove:none_closed_branches={none_closed_branches}")
             
             if not is_proved:
-                logging.info("##### ENHANCED REQUEST #####")
                 request = self._enhaned_request(none_closed_branches,origin_request.content,origin_answer,premises,goal)
-                logging.info(request)
-                logging.info("##### ENHANCED REQUEST END #####")
+                logging.info(f"thread{thread_id}:auto_prove:enhanced_request={request}")
                 
                 return {"history" : [HumanMessage(request)]
                         ,"mode": Mode.ENHANCED
@@ -375,11 +339,11 @@ class ATPagent:
              
         except FolConvertFailException as e:
             error = e
-            logging.error(f"auto prove : {e}")
+            logging.error(f"thread{thread_id}:auto_prove:error={e}")
             
         except Exception as e:
-            error = e
-            logging.error(f"auto prove : {e}")
+            error = Exception("internal error")
+            logging.error(f"thread{thread_id}:auto_prove:error={e}")
         
         return {
                 "mode": Mode.DECISION
@@ -389,21 +353,18 @@ class ATPagent:
                 ,"error" : error} 
 
     def _decision(self,state:State):
-        
         error, is_proved = state["error"], state["is_proved"]
         tool_count, enhance_count = state["tool_count"], state["enhance_count"]
         mode, max = state["mode"], self.max_attemption
 
         if (mode == Mode.ENHANCED  and  enhance_count  > max) or  (mode == Mode.TOOL  and tool_count  > max) :
             is_proved, error = False, OverMaxAttemptionException()
-
         elif (mode == Mode.ENHANCED and enhance_count <= max) or (mode ==  Mode.TOOL and not tool_count <= max):
             return { "mode": Mode.CORE
                     ,"tool_count" : state["tool_count"]
                     ,"enhance_count" : state["enhance_count"]
                     ,"is_proved" : False
                     ,"error" : None}
-                      
         return {
                 "mode": Mode.END
                 ,"tool_count" : 0
@@ -423,7 +384,6 @@ class ATPagent:
             return "auto_prove"
     
     def _build(self):
-        self.graph_builder.add_node("init",self._init_context)
         self.graph_builder.add_node("core_model",self._core_model)
         self.graph_builder.add_node("auto_prove",self._auto_prove)
         self.graph_builder.add_node("end_or_loop_decision",self._decision)
@@ -490,7 +450,7 @@ class ATPagent:
                 query = yield response
                 
                 if query == self.end_signal:
-                    logging.info(f"##### THREAD-{thread_id} END #####")
+                    logging.info(f"thread{thread_id}:end")
                     return
                  
                 state["mode"] = Mode.CORE
