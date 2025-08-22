@@ -194,7 +194,7 @@ class ATPagent:
         
     def _natural2fol(self,natural : str) -> str:
         result = self.fol_translate_model.invoke([SystemMessage(self.fol_translater_prompt),HumanMessage(natural)]).content
-        fol = self._get_fol(result)
+        fol = self._get_result(result, FOL_RESULT_PATTERN)
         
         if fol is None:
             raise FolConvertFailException(result)
