@@ -274,7 +274,10 @@ class ATPagent:
         try:
             message = state["history"][-1]
             logging.info(f"thread{thread_id}:core_model:user_request={message}")
-            response = self.chat_model.invoke([state["user_instruction"],message])
+            if isinstance(message,SystemMessage):
+                response = self.chat_model.invoke([message])
+            else:
+                response = self.chat_model.invoke([state["user_instruction"],message])
             logging.info(f"thread{thread_id}:core_model:llm_response={response}")
             
             if self.custom_tool_mode:
@@ -330,7 +333,7 @@ class ATPagent:
                 request = self._enhaned_request(none_closed_branches,origin_request.content,origin_answer,premises,goal)
                 logging.info(f"thread{thread_id}:auto_prove:enhanced_request={request}")
                 
-                return {"history" : [HumanMessage(request)]
+                return {"history" : [SystemMessage(request)]
                         ,"mode": Mode.ENHANCED
                         ,"tool_count" : state["tool_count"]
                         ,"enhance_count" : state["enhance_count"] + 1
@@ -357,14 +360,15 @@ class ATPagent:
         tool_count, enhance_count = state["tool_count"], state["enhance_count"]
         mode, max = state["mode"], self.max_attemption
 
-        if (mode == Mode.ENHANCED  and  enhance_count  > max) or  (mode == Mode.TOOL  and tool_count  > max) :
-            is_proved, error = False, OverMaxAttemptionException()
-        elif (mode == Mode.ENHANCED and enhance_count <= max) or (mode ==  Mode.TOOL and not tool_count <= max):
-            return { "mode": Mode.CORE
-                    ,"tool_count" : state["tool_count"]
-                    ,"enhance_count" : state["enhance_count"]
-                    ,"is_proved" : False
-                    ,"error" : None}
+        if(error is None):
+            if (mode == Mode.ENHANCED  and  enhance_count  > max) or  (mode == Mode.TOOL  and tool_count  > max) :
+                is_proved, error = False, OverMaxAttemptionException()
+            elif (mode == Mode.ENHANCED and enhance_count <= max) or (mode ==  Mode.TOOL and not tool_count <= max):
+                return { "mode": Mode.CORE
+                        ,"tool_count" : state["tool_count"]
+                        ,"enhance_count" : state["enhance_count"]
+                        ,"is_proved" : False
+                        ,"error" : None}
         return {
                 "mode": Mode.END
                 ,"tool_count" : 0
