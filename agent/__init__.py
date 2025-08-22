@@ -197,7 +197,7 @@ class ATPagent:
         fol = self._get_result(result, FOL_RESULT_PATTERN)
         
         if fol is None:
-            raise FolConvertFailException(result)
+            raise FolConvertFailException(f"input : {natural}\n"+f"reason : {result}")
         return fol
     
     def _fol2formula(self, fol) -> Tuple[List[Formula], Formula]:
@@ -273,10 +273,11 @@ class ATPagent:
         
         try:
             message = state["history"][-1]
-            logging.info(f"thread{thread_id}:core_model:user_request={message}")
             if isinstance(message,SystemMessage):
+                logging.info(f"thread{thread_id}:core_model:system_request={message}")
                 response = self.chat_model.invoke([message])
             else:
+                logging.info(f"thread{thread_id}:core_model:user_request={message}")
                 response = self.chat_model.invoke([state["user_instruction"],message])
             logging.info(f"thread{thread_id}:core_model:llm_response={response}")
             
@@ -324,10 +325,7 @@ class ATPagent:
             premises = premises + self.premises
             is_proved, none_closed_branches = self.prove_system.prove(premises=premises, conclusion=goal)
             
-            logging.info(f"thread{thread_id}:auto_prove:premises={premises}")
-            logging.info(f"thread{thread_id}:auto_prove:goal={goal}")
             logging.info(f"thread{thread_id}:auto_prove:is_proved={is_proved}")
-            logging.info(f"thread{thread_id}:auto_prove:none_closed_branches={none_closed_branches}")
             
             if not is_proved:
                 request = self._enhaned_request(none_closed_branches,origin_request.content,origin_answer,premises,goal)
@@ -355,20 +353,26 @@ class ATPagent:
                 ,"is_proved" : is_proved
                 ,"error" : error} 
 
-    def _decision(self,state:State):
+    def _decision(self,state:State, config:RunnableConfig):
+        thread_id = config.get("configurable", {}).get("thread_id")
         error, is_proved = state["error"], state["is_proved"]
         tool_count, enhance_count = state["tool_count"], state["enhance_count"]
         mode, max = state["mode"], self.max_attemption
+        
+        logging.info(f"thread{thread_id}:end_or_loop_decision:error={error}")
 
         if(error is None):
             if (mode == Mode.ENHANCED  and  enhance_count  > max) or  (mode == Mode.TOOL  and tool_count  > max) :
                 is_proved, error = False, OverMaxAttemptionException()
+                logging.info(f"thread{thread_id}:end_or_loop_decision:error={error}")
             elif (mode == Mode.ENHANCED and enhance_count <= max) or (mode ==  Mode.TOOL and not tool_count <= max):
+                logging.info(f"thread{thread_id}:end_or_loop_decision:mode={mode}")
                 return { "mode": Mode.CORE
                         ,"tool_count" : state["tool_count"]
                         ,"enhance_count" : state["enhance_count"]
                         ,"is_proved" : False
                         ,"error" : None}
+        logging.info(f"thread{thread_id}:end_or_loop_decision:decision=end")
         return {
                 "mode": Mode.END
                 ,"tool_count" : 0
