@@ -10,20 +10,19 @@ Your task:
 - Keep only the essential logical facts and constraints that can be easily expressed in first-order logic (FOL).
 - The result must be short, unambiguous, and focused on the logical core.
 
-Output format:
-- Write the revised answer as plain declarative sentences.
-- Avoid figurative language.
-- Structure sentences so they can be directly mapped to FOL predicates.
+Rules:
+- If Revise is **impossible** (e.g., the request is paradoxical, axioms are missing/insufficient, or the content cannot be expressed consistently in FOL), **do not fabricate new assumptions**. Instead, output only a clear failure reason.
+- Do not simply restate the original answer.
+- Be concise, factual, and FOL-friendly (avoid figurative/emotional language).
+- If you output <FAIL> reason of failure </FAIL>, **do not** output <REVISE> Revise answer </REVISE>.
 
-Example:
-    Original Answer:
-    "The air crackles with chaotic energy, but the attempt fails. Your form remains distinctly human, though a flicker of green briefly tints your skin. The fundamental laws of existence prevent such a paradoxical transformation."
+Output format restrictions:
+  <REVISE> Revise answer </REVISE>
+  <FAIL> reason of failure </FAIL>
 
-    Feedback:
-    "The request was to become both an orc and a human simultaneously, which is paradoxical. A more accurate response should state the impossibility of being both at once."
-
-    Output:
-    No being can be both a human and an orc.
+Examples:
+  <REVISE> No being can be both a human and an orc at the same time. Therefore, your requested transformation is impossible, and you remain human. </REVISE>
+  <FAIL> The request is paradoxical under the given axiom ∀x ¬(Human(x) ∧ Orc(x)). Any enhancement would require contradicting the stated premise or inventing unsupported assumptions. </FAIL>
     
 Original Answer:
 {{ORIGINAL_ANSWER}}

@@ -21,6 +21,7 @@ from prompt.enhanced_request_by_none_closed_branches import PROMPT as enhanced_r
 from prompt.fol_convertor_mini import PROMPT as fol_convertor_mini 
 from prompt.agent_modelfile import PROMPT as agent_modelfile
 from prompt.revise import PROMPT as revise_prompt
+from prompt.extract_core_logic import PROMPT as extract_core_logic
 from langchain_core.runnables.config import RunnableConfig
 import threading, re
 import logging
@@ -45,17 +46,20 @@ class Mode(Enum):
 
 
 class EnhancedRequestMessage(SystemMessage):
-    def __init__(self, content: str,origin_answer: str ,**kwargs):
+    def __init__(self, content: str,origin_answer: str, core_logic: str ,**kwargs):
         super().__init__(content=content, **kwargs)
         self.origin_answer = origin_answer
+        self.core_logic = core_logic
         
     def __repr__(self):
         return f"EnhancedMessage(content={self.content!r})"
     
 class EnhanceFailMessage(AIMessage):
-    def __init__(self, content: str,origin_answer:str,**kwargs):
+    def __init__(self, content: str,origin_answer:str, core_logic:str ,**kwargs):
         super().__init__(content=content, **kwargs)
         self.origin_answer = origin_answer
+        self.core_logic = core_logic
+        
     def __repr__(self):
         return f"EnhancedMessage(content={self.content!r})"
     
@@ -239,7 +243,7 @@ class ATPagent:
         answer:str, premises:List[Formula], goal:Formula) -> str:
         
         branches = [[fol2sentance(notate[1]) for notate in branch] for branch in branches]
-        branches = [[f for f in branch if f is not None] for branch in branches ]
+        branches = [[f"({f})" for f in branch if f is not None] for branch in branches ]
         rows = []
         for i, branch in enumerate(branches):
             if len(branch) >= 2:
@@ -297,7 +301,7 @@ class ATPagent:
                 fail = self._get_result(response.content, FAIL)
                 revise = self._get_result(response.content, REVISE)
                 if fail is not None: 
-                    response = EnhanceFailMessage(fail,origin_answer=message.origin_answer)
+                    response = EnhanceFailMessage(fail,origin_answer=message.origin_answer, core_logic=message.core_logic)
                 elif revise is not None:
                     response = AIMessage(revise)
                 else:
@@ -351,7 +355,7 @@ class ATPagent:
             if isinstance(state["history"][-1], EnhanceFailMessage):
                 request = revise_prompt\
                     .replace("{{FEEDBACK}}",origin_answer)\
-                    .replace("{{ORIGINAL_ANSWER}}",state["history"][-1].origin_answer)
+                    .replace("{{ORIGINAL_ANSWER}}",state["history"][-1].core_logic)
                 return {"history" : [EnhancedRequestMessage(request,origin_answer=request)]
                         ,"mode": Mode.ENHANCED
                         ,"tool_count" : state["tool_count"]
@@ -359,9 +363,13 @@ class ATPagent:
                         ,"is_proved" : is_proved
                         ,"error" : error} 
             
-            
-            fol_formula = self._formal_language_converter(origin_answer)
             origin_request = self._current_user_request(state["history"])
+            extract_core_logic_prompt = extract_core_logic\
+                .replace("{{QUESTION}}",origin_request.content)\
+                .replace("{{ANSWER}}",origin_answer)
+            core_logic = self.chat_model.invoke([SystemMessage(extract_core_logic_prompt)]).content
+            logging.info(f"thread{thread_id}:auto_prove:core_logic={core_logic}")
+            fol_formula = self._formal_language_converter(core_logic)
             premises,goal = fol_formula
             premises = premises + self.premises
             is_proved, none_closed_branches = self.prove_system.prove(premises=premises, conclusion=goal)
@@ -373,7 +381,7 @@ class ATPagent:
                 request = self._enhaned_request(none_closed_branches,origin_request.content,origin_answer,premises,goal)
                 logging.info(f"thread{thread_id}:auto_prove:enhanced_request={request}")
                 
-                return {"history" : [EnhancedRequestMessage(request,origin_answer=origin_answer)]
+                return {"history" : [EnhancedRequestMessage(request,origin_answer=origin_answer, core_logic=core_logic)]
                         ,"mode": Mode.ENHANCED
                         ,"tool_count" : state["tool_count"]
                         ,"enhance_count" : state["enhance_count"] + 1
