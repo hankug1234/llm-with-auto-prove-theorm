@@ -5,7 +5,7 @@ Guidelines:
 - Represent abstract concepts as predicates (Love(x), FeelsSad(x)).
 - You are given a list of predicates from the premises: reuse them exactly if the meaning matches the input sentence.
 - Compare the natural language meaning of the input with the natural language form of the given predicates to decide reuse.
-- Invent predicates/functions only if no equivalent exists in the given list.
+- Invent predicates/functions only if no equivalent exists in the given Predefined predicates.
 - Rewrite apostrophes or phrases using standard FOL (functions, equality).
 
 Predefined predicates (from premises):

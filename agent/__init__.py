@@ -20,6 +20,7 @@ from auto_prove import Formula, Notated, Operation, operation2string
 from prompt.enhanced_request_by_none_closed_branches import PROMPT as enhanced_request
 from prompt.fol_convertor_mini import PROMPT as fol_convertor_mini 
 from prompt.agent_modelfile import PROMPT as agent_modelfile
+from prompt.revise import PROMPT as revise_prompt
 from langchain_core.runnables.config import RunnableConfig
 import threading, re
 import logging
@@ -28,6 +29,8 @@ from html import unescape
 logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s:%(message)s")
 FOL_RESULT_PATTERN = r"<\s*FOL\s*>([\s\S]*?)<\s*/\s*FOL\s*>"
 TOOL_RESULT_PATTERN = r"<\s*function_call\s*>([\s\S]*?)<\s*/\s*function_call\s*>"
+REVISE = r"<\s*REVISE\s*>([\s\S]*?)<\s*/\s*REVISE\s*>"
+FAIL = r"<\s*FAIL\s*>([\s\S]*?)<\s*/\s*FAIL\s*>"
 
 def add(a: List[Any], b: List[Any]):
     return a + b
@@ -39,6 +42,24 @@ class Mode(Enum):
     END = "end"
     DECISION = "decision"
     PROVE = "prove"
+
+
+class EnhancedRequestMessage(SystemMessage):
+
+    def __init__(self, content: str,origin_answer: str ,**kwargs):
+        super().__init__(content=content, **kwargs)
+        self.origin_answer = origin_answer
+        
+    def __repr__(self):
+        return f"EnhancedMessage(content={self.content!r})"
+    
+class EnhanceFailMessage(AIMessage):
+
+    def __init__(self, content: str,**kwargs):
+        super().__init__(content=content, **kwargs)
+        
+    def __repr__(self):
+        return f"EnhancedMessage(content={self.content!r})"
     
 class ChatModelNoneException(Exception):
     def __init__(self,message="chat model is None"):
@@ -273,6 +294,18 @@ class ATPagent:
         
         try:
             message = state["history"][-1]
+            if isinstance(message,EnhancedRequestMessage):
+                logging.info(f"thread{thread_id}:core_model:enhanced_request={message}")
+                response = self.chat_model.invoke([SystemMessage(message.content)])
+                fail = self._get_result(response.content, FAIL)
+                revise = self._get_result(response.content, REVISE)
+                if fail is not None: 
+                    response = EnhanceFailMessage(fail)
+                elif revise is not None:
+                    response = AIMessage(revise)
+                else:
+                    raise Exception(f"enhanced request fail : {response.content}")
+                
             if isinstance(message,SystemMessage):
                 logging.info(f"thread{thread_id}:core_model:system_request={message}")
                 response = self.chat_model.invoke([message])
@@ -310,7 +343,7 @@ class ATPagent:
                 
         except Exception as e:
             logging.error(f"thread{thread_id}:core_model:error={e}")
-            return {"mode" : Mode.END}
+            return {"mode" : Mode.END, "error" :e, "is_proved": False, "tool_count":0, "enhance_count":0}
         
     
     def _auto_prove(self,state:State, config:RunnableConfig):
@@ -318,33 +351,35 @@ class ATPagent:
         is_proved,error = False,None
         origin_answer = state["history"][-1].content
         
-        try:
-            fol_formula = self._formal_language_converter(origin_answer)
-            origin_request = self._current_user_request(state["history"])
-            premises,goal = fol_formula
-            premises = premises + self.premises
-            is_proved, none_closed_branches = self.prove_system.prove(premises=premises, conclusion=goal)
-            
-            logging.info(f"thread{thread_id}:auto_prove:is_proved={is_proved}")
-            
-            if not is_proved:
-                request = self._enhaned_request(none_closed_branches,origin_request.content,origin_answer,premises,goal)
-                logging.info(f"thread{thread_id}:auto_prove:enhanced_request={request}")
+        if not isinstance(origin_answer, EnhanceFailMessage):
+            try:
+                fol_formula = self._formal_language_converter(origin_answer)
+                origin_request = self._current_user_request(state["history"])
+                premises,goal = fol_formula
+                premises = premises + self.premises
+                is_proved, none_closed_branches = self.prove_system.prove(premises=premises, conclusion=goal)
                 
-                return {"history" : [SystemMessage(request)]
-                        ,"mode": Mode.ENHANCED
-                        ,"tool_count" : state["tool_count"]
-                        ,"enhance_count" : state["enhance_count"] + 1
-                        ,"is_proved" : is_proved
-                        ,"error" : error}        
-             
-        except FolConvertFailException as e:
-            error = e
-            logging.error(f"thread{thread_id}:auto_prove:error={e}")
-            
-        except Exception as e:
-            error = Exception("internal error")
-            logging.error(f"thread{thread_id}:auto_prove:error={e}")
+                logging.info(f"thread{thread_id}:auto_prove:is_proved={is_proved}")
+                logging.info(f"thread{thread_id}:auto_prove:formula={fol_formula}")
+                
+                if not is_proved:
+                    request = self._enhaned_request(none_closed_branches,origin_request.content,origin_answer,premises,goal)
+                    logging.info(f"thread{thread_id}:auto_prove:enhanced_request={request}")
+                    
+                    return {"history" : [EnhancedRequestMessage(request,origin_answer=origin_answer)]
+                            ,"mode": Mode.ENHANCED
+                            ,"tool_count" : state["tool_count"]
+                            ,"enhance_count" : state["enhance_count"] + 1
+                            ,"is_proved" : is_proved
+                            ,"error" : error}        
+                
+            except FolConvertFailException as e:
+                error = e
+                logging.error(f"thread{thread_id}:auto_prove:error={e}")
+                
+            except Exception as e:
+                error = Exception("internal error")
+                logging.error(f"thread{thread_id}:auto_prove:error={e}")
         
         return {
                 "mode": Mode.DECISION
