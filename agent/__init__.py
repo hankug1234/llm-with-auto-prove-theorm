@@ -396,9 +396,9 @@ class ATPagent:
         self.graph_builder.add_node("auto_prove",self._auto_prove)
         self.graph_builder.add_node("end_or_loop_decision",self._decision)
         self.graph_builder.add_edge(START,"core_model")
-        self.graph_builder.add_conditional_edges("core_model",self._route,["auto_prove","end_or_loop_decision",END])
+        self.graph_builder.add_conditional_edges("core_model", self._route,["auto_prove","end_or_loop_decision",END])
         self.graph_builder.add_edge("auto_prove","end_or_loop_decision")
-        self.graph_builder.add_edge("end_or_loop_decision", "core_model")
+        self.graph_builder.add_conditional_edges("end_or_loop_decision", self._route, ["core_model",END])
         
         return self.graph_builder.compile(checkpointer=self.checkpointer,store=self.memory)
 
