@@ -295,7 +295,6 @@ class ATPagent:
         try:
             message = state["history"][-1]
             if isinstance(message,EnhancedRequestMessage):
-                logging.info(f"thread{thread_id}:core_model:enhanced_request={message}")
                 response = self.chat_model.invoke([SystemMessage(message.content)])
                 fail = self._get_result(response.content, FAIL)
                 revise = self._get_result(response.content, REVISE)
@@ -305,8 +304,7 @@ class ATPagent:
                     response = AIMessage(revise)
                 else:
                     raise Exception(f"enhanced request fail : {response.content}")
-                
-            if isinstance(message,SystemMessage):
+            elif isinstance(message,SystemMessage):
                 logging.info(f"thread{thread_id}:core_model:system_request={message}")
                 response = self.chat_model.invoke([message])
             else:
@@ -351,7 +349,7 @@ class ATPagent:
         is_proved,error = False,None
         origin_answer = state["history"][-1].content
         
-        if not isinstance(origin_answer, EnhanceFailMessage):
+        if isinstance(origin_answer, AIMessage):
             try:
                 fol_formula = self._formal_language_converter(origin_answer)
                 origin_request = self._current_user_request(state["history"])
