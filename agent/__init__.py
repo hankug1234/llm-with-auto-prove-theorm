@@ -45,7 +45,6 @@ class Mode(Enum):
 
 
 class EnhancedRequestMessage(SystemMessage):
-
     def __init__(self, content: str,origin_answer: str ,**kwargs):
         super().__init__(content=content, **kwargs)
         self.origin_answer = origin_answer
@@ -54,10 +53,9 @@ class EnhancedRequestMessage(SystemMessage):
         return f"EnhancedMessage(content={self.content!r})"
     
 class EnhanceFailMessage(AIMessage):
-
-    def __init__(self, content: str,**kwargs):
+    def __init__(self, content: str,origin_answer:str,**kwargs):
         super().__init__(content=content, **kwargs)
-        
+        self.origin_answer = origin_answer
     def __repr__(self):
         return f"EnhancedMessage(content={self.content!r})"
     
@@ -299,7 +297,7 @@ class ATPagent:
                 fail = self._get_result(response.content, FAIL)
                 revise = self._get_result(response.content, REVISE)
                 if fail is not None: 
-                    response = EnhanceFailMessage(fail)
+                    response = EnhanceFailMessage(fail,origin_answer=message.origin_answer)
                 elif revise is not None:
                     response = AIMessage(revise)
                 else:
@@ -349,35 +347,46 @@ class ATPagent:
         is_proved,error = False,None
         origin_answer = state["history"][-1].content
         
-        if isinstance(origin_answer, AIMessage):
-            try:
-                fol_formula = self._formal_language_converter(origin_answer)
-                origin_request = self._current_user_request(state["history"])
-                premises,goal = fol_formula
-                premises = premises + self.premises
-                is_proved, none_closed_branches = self.prove_system.prove(premises=premises, conclusion=goal)
+        try:
+            if isinstance(state["history"][-1], EnhanceFailMessage):
+                request = revise_prompt\
+                    .replace("{{FEEDBACK}}",origin_answer)\
+                    .replace("{{ORIGINAL_ANSWER}}",state["history"][-1].origin_answer)
+                return {"history" : [EnhancedRequestMessage(request,origin_answer=request)]
+                        ,"mode": Mode.ENHANCED
+                        ,"tool_count" : state["tool_count"]
+                        ,"enhance_count" : state["enhance_count"] + 1
+                        ,"is_proved" : is_proved
+                        ,"error" : error} 
+            
+            
+            fol_formula = self._formal_language_converter(origin_answer)
+            origin_request = self._current_user_request(state["history"])
+            premises,goal = fol_formula
+            premises = premises + self.premises
+            is_proved, none_closed_branches = self.prove_system.prove(premises=premises, conclusion=goal)
+            
+            logging.info(f"thread{thread_id}:auto_prove:is_proved={is_proved}")
+            logging.info(f"thread{thread_id}:auto_prove:formula={fol_formula}")
+            
+            if not is_proved:
+                request = self._enhaned_request(none_closed_branches,origin_request.content,origin_answer,premises,goal)
+                logging.info(f"thread{thread_id}:auto_prove:enhanced_request={request}")
                 
-                logging.info(f"thread{thread_id}:auto_prove:is_proved={is_proved}")
-                logging.info(f"thread{thread_id}:auto_prove:formula={fol_formula}")
-                
-                if not is_proved:
-                    request = self._enhaned_request(none_closed_branches,origin_request.content,origin_answer,premises,goal)
-                    logging.info(f"thread{thread_id}:auto_prove:enhanced_request={request}")
-                    
-                    return {"history" : [EnhancedRequestMessage(request,origin_answer=origin_answer)]
-                            ,"mode": Mode.ENHANCED
-                            ,"tool_count" : state["tool_count"]
-                            ,"enhance_count" : state["enhance_count"] + 1
-                            ,"is_proved" : is_proved
-                            ,"error" : error}        
-                
-            except FolConvertFailException as e:
-                error = e
-                logging.error(f"thread{thread_id}:auto_prove:error={e}")
-                
-            except Exception as e:
-                error = Exception("internal error")
-                logging.error(f"thread{thread_id}:auto_prove:error={e}")
+                return {"history" : [EnhancedRequestMessage(request,origin_answer=origin_answer)]
+                        ,"mode": Mode.ENHANCED
+                        ,"tool_count" : state["tool_count"]
+                        ,"enhance_count" : state["enhance_count"] + 1
+                        ,"is_proved" : is_proved
+                        ,"error" : error}        
+            
+        except FolConvertFailException as e:
+            error = e
+            logging.error(f"thread{thread_id}:auto_prove:error={e}")
+            
+        except Exception as e:
+            error = Exception("internal error")
+            logging.error(f"thread{thread_id}:auto_prove:error={e}")
         
         return {
                 "mode": Mode.DECISION
