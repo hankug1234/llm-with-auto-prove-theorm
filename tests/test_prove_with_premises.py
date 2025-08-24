@@ -85,10 +85,10 @@ if __name__ == "__main__":
         from auto_prove import operation2string
         world_rules = [
         ("∀x (Human(x) → Mortal(x))","Humans are mortal."),
-        #("¬(Dead(x) ∧ Alive(x))","Death and life cannot exist simultaneously."),
-        #("∀x (Wizard(x) → CanUseMagic(x))","Wizards can use magic."),
-        #("¬(Orc(x) ∧ Human(x))","Orcs and humans are distinct races."),
-        #("∀x (EnemyOf(x, y) → ¬FriendOf(x, y))","One cannot be both an enemy and a friend at the same time."),
+        ("¬(Dead(x) ∧ Alive(x))","Death and life cannot exist simultaneously."),
+        ("∀x (Wizard(x) → CanUseMagic(x))","Wizards can use magic."),
+        ("¬(Orc(x) ∧ Human(x))","Orcs and humans are distinct races."),
+        ("∀x (EnemyOf(x, y) → ¬FriendOf(x, y))","One cannot be both an enemy and a friend at the same time."),
         ("∀x (Immortal(x) ↔ ¬Mortal(x))","Immortality is the negation of mortality.")
         ] 
         tableau_prover = Tableau()
@@ -96,7 +96,7 @@ if __name__ == "__main__":
         premises, goal = interpreter("∀x ((Immortal(x) ∧ Human(x)) → ¬Human(x))".strip())
         premises = [interpreter(fol)[1] for fol,_ in world_rules]
         
-        result, branches = prove_with_premises(premises, goal, qdepth=5)
+        result, branches = prove_with_premises(premises, goal, qdepth=60)
         
         print("none cloesed branches: ")
             

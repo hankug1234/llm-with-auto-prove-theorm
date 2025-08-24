@@ -245,14 +245,14 @@ class Tableau:
                 if self._is_unary_formula(form):
                     comp = self._component(form)
                     new_branch = branch[:f_idx] + [self._make_notated(free, comp)] + branch[f_idx+1:]
-                    return (tableau[:b_idx] + [new_branch] + tableau[b_idx+1:], qdepth, equality)
+                    return (tableau[:b_idx] + tableau[b_idx+1:] + [new_branch], qdepth, equality)
                 
             # 2) Alpha
             for f_idx, (free, form) in enumerate(branch):
                 if self._is_conjunctive(form):
                     a1, a2 = self._components(form)
                     new_branch = branch[:f_idx] + [self._make_notated(free, a1), self._make_notated(free, a2)] + branch[f_idx+1:]
-                    return (tableau[:b_idx] + [new_branch] + tableau[b_idx+1:], qdepth, equality)
+                    return (tableau[:b_idx] + tableau[b_idx+1:] + [new_branch], qdepth, equality)
                 
             # 3) Beta
             for f_idx, (free, form) in enumerate(branch):
@@ -260,7 +260,7 @@ class Tableau:
                     b1, b2 = self._components(form)
                     br1 = branch[:f_idx] + [self._make_notated(free, b1)] + branch[f_idx+1:]
                     br2 = branch[:f_idx] + [self._make_notated(free, b2)] + branch[f_idx+1:]
-                    new_tb = tableau[:b_idx] + [br1, br2] + tableau[b_idx+1:]
+                    new_tb = tableau[:b_idx] + tableau[b_idx+1:] + [br1, br2] 
                     return (new_tb, qdepth, equality)
                 
             # 4) Gamma (universal)
@@ -288,7 +288,7 @@ class Tableau:
                 
                 if reflex not in existing_eqs:                   # 아직 없다면 추가
                     new_branch = branch + [self._make_notated([], reflex)]
-                    new_tableau = tableau[:b_idx] + [new_branch] + tableau[b_idx+1:]
+                    new_tableau = tableau[:b_idx] + tableau[b_idx+1:] + [new_branch]
                     return (new_tableau, qdepth, equality)
                 
             # 6) Equality SUBSTITUTIVITY (원자식 치환)  <— 기존 규칙 보강
@@ -324,7 +324,7 @@ class Tableau:
                     inner = frm[1]
                     if isinstance(inner, tuple) and inner[0] == Operation.EQUAL and inner[1] == inner[2]:
                         new_branch = branch + [([], False)]
-                        new_tableau = tableau[:b_idx] + [new_branch] + tableau[b_idx+1:]
+                        new_tableau = tableau[:b_idx] + tableau[b_idx+1:] + [new_branch]
                         return (new_tableau, qdepth, equality)
 
                         
@@ -334,7 +334,7 @@ class Tableau:
                     term = self._new_sko_fun(free)
                     inst = self._instance(form, term)
                     new_branch = branch[:f_idx] + [self._make_notated(free, inst)] + branch[f_idx+1:]
-                    return (tableau[:b_idx] + [new_branch] + tableau[b_idx+1:], qdepth, equality)
+                    return (tableau[:b_idx] + tableau[b_idx+1:] + [new_branch] , qdepth, equality)
         return None
 
     # --- 전체 확장 expand -----------------------------------------------------
