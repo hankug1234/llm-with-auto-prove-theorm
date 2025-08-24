@@ -6,6 +6,7 @@ from langchain_core.messages import AnyMessage, AIMessage
 from agent import ResponseParser
 import re
 
+
 '''
 todo list 
 
@@ -45,7 +46,8 @@ if __name__ == "__main__":
         ("¬(Dead(x) ∧ Alive(x))","Death and life cannot exist simultaneously."),
         ("∀x (Wizard(x) → CanUseMagic(x))","Wizards can use magic."),
         ("¬(Orc(x) ∧ Human(x))","Orcs and humans are distinct races."),
-        ("∀x (EnemyOf(x, y) → ¬FriendOf(x, y))","One cannot be both an enemy and a friend at the same time.")
+        ("∀x (EnemyOf(x, y) → ¬FriendOf(x, y))","One cannot be both an enemy and a friend at the same time."),
+        ("∀x (Immortal(x) ↔ ¬Mortal(x))","Immortality is the negation of mortality.")
     ] 
     
     premises = [(interpreter(fol)[1],rule) for fol,rule in world_rules]

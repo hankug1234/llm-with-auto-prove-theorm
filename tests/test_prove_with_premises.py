@@ -82,32 +82,33 @@ def test_prove_with_premises():
 if __name__ == "__main__":
         from auto_prove.interpreter import pre_modification_fol_interpreter as interpreter  
         from auto_prove.interpreter import fol2sentance
+        from auto_prove import operation2string
         world_rules = [
         ("∀x (Human(x) → Mortal(x))","Humans are mortal."),
-        ("¬(Dead(x) ∧ Alive(x))","Death and life cannot exist simultaneously."),
-        ("∀x (Wizard(x) → CanUseMagic(x))","Wizards can use magic."),
-        ("¬(Orc(x) ∧ Human(x))","Orcs and humans are distinct races."),
-        ("∀x (EnemyOf(x, y) → ¬FriendOf(x, y))","One cannot be both an enemy and a friend at the same time.")
+        #("¬(Dead(x) ∧ Alive(x))","Death and life cannot exist simultaneously."),
+        #("∀x (Wizard(x) → CanUseMagic(x))","Wizards can use magic."),
+        #("¬(Orc(x) ∧ Human(x))","Orcs and humans are distinct races."),
+        #("∀x (EnemyOf(x, y) → ¬FriendOf(x, y))","One cannot be both an enemy and a friend at the same time."),
+        ("∀x (Immortal(x) ↔ ¬Mortal(x))","Immortality is the negation of mortality.")
         ] 
         tableau_prover = Tableau()
         prove_with_premises = tableau_prover.prove
-        premises, goal = interpreter("Laughs([Wizard]) ∧ Says([Wizard], [Mortality is the bedrock of existence, little one.]) ∧ Says([Wizard], [To defy it is to invite oblivion.]) ∧ ¬∃x (Defies(x, [Mortality]) ∧ Grants([Wizard], x))".strip())
-        premises = [(interpreter(fol)[1],rule) for fol,rule in world_rules]
+        premises, goal = interpreter("∀x ((Immortal(x) ∧ Human(x)) → ¬Human(x))".strip())
+        premises = [interpreter(fol)[1] for fol,_ in world_rules]
         
+        result, branches = prove_with_premises(premises, goal, qdepth=5)
         
-        print(fol2sentance(goal))
-        
-        # print("premises: ")
-        # for premise in premises:
-        #         print(premise)
-        # print("goal: ")
-        # print(goal)
-        # print()
-        # print()
-        # result, branches = prove_with_premises(premises, goal, qdepth=5)
-        
-        # print("none cloesed branches: ")        
-        # for branch in branches:
-        #         print(branch)
-        # print("result: ")
-        # print(result)
+        print("none cloesed branches: ")
+            
+        branches = [[fol2sentance(notate[1]) for notate in branch] for branch in branches]
+        branches = [[f"({f})" for f in branch if f is not None] for branch in branches ]
+        rows = []
+        for i, branch in enumerate(branches):
+            if len(branch) >= 2:
+                row = f" {operation2string(Operation.AND)} ".join(branch)
+                row = f"{i}. {row}"
+            else:
+                row = f"{i}. {row}"
+            print(row)
+        print("result: ")
+        print(result)

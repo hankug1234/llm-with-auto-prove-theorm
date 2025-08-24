@@ -159,7 +159,7 @@ class Tableau:
             if op == Operation.NOT_REVERSED_IMPLIE:
                 return (form[2],(Operation.NEG, form[1]))
             if op == Operation.AND_IMPLIE_BI:
-                return ((form[1], (Operation.NEG, form[2])), (form[2], (Operation.NEG, form[1])))
+                return (Operation.IMPLIE,form[1], form[2]), (Operation.IMPLIE, form[2], form[1])
             if op == Operation.NEG and isinstance(form[1], tuple):
                 inner = form[1]
                 in_op, a, b = inner[0], inner[1], inner[2]
@@ -178,7 +178,7 @@ class Tableau:
                         # ¬¬(A←B)  →  A←B  →  (¬B , A)
                         return (Operation.NEG, b), a
                     case Operation.AND_IMPLIE_BI:
-                        return (b, (Operation.NEG, a)), (a, (Operation.NEG, b))
+                        return (Operation.AND, a, (Operation.NEG, b)), (Operation.AND, b, (Operation.NEG, a))
                     
         raise ValueError(f"No components for {form}")
 
@@ -239,7 +239,7 @@ class Tableau:
     ) -> Optional[Tuple[List[List[Notated]], int, int]]:
 
         for b_idx, branch in enumerate(tableau):
-            
+            self._terms_in_branch = set()
             # 1) Unary
             for f_idx, (free, form) in enumerate(branch):
                 if self._is_unary_formula(form):

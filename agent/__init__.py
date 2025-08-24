@@ -218,9 +218,9 @@ class ATPagent:
     def _natural2fol(self,natural : str) -> str:
         result = self.fol_translate_model.invoke([SystemMessage(self.fol_translater_prompt),HumanMessage(natural)]).content
         fol = self._get_result(result, FOL_RESULT_PATTERN)
-        
+        logging.info(f"fol : {fol}")
         if fol is None:
-            raise FolConvertFailException(f"input : {natural}\n"+f"reason : {result}")
+            raise FolConvertFailException(f"reason : {result}")
         return fol
     
     def _fol2formula(self, fol) -> Tuple[List[Formula], Formula]:
@@ -349,26 +349,27 @@ class ATPagent:
     def _auto_prove(self,state:State, config:RunnableConfig):
         thread_id = config.get("configurable", {}).get("thread_id")
         is_proved,error = False,None
-        origin_answer = state["history"][-1].content
+        answer = state["history"][-1].content
         
         try:
             if isinstance(state["history"][-1], EnhanceFailMessage):
-                request = revise_prompt\
-                    .replace("{{FEEDBACK}}",origin_answer)\
-                    .replace("{{ORIGINAL_ANSWER}}",state["history"][-1].core_logic)
-                return {"history" : [EnhancedRequestMessage(request,origin_answer=request)]
-                        ,"mode": Mode.ENHANCED
-                        ,"tool_count" : state["tool_count"]
-                        ,"enhance_count" : state["enhance_count"] + 1
-                        ,"is_proved" : is_proved
-                        ,"error" : error} 
+                return {
+                "mode": Mode.DECISION
+                ,"tool_count" : state["tool_count"]
+                ,"enhance_count" : state["enhance_count"]
+                ,"is_proved" : is_proved
+                ,"error" : error} 
             
             origin_request = self._current_user_request(state["history"])
+            
             extract_core_logic_prompt = extract_core_logic\
                 .replace("{{QUESTION}}",origin_request.content)\
-                .replace("{{ANSWER}}",origin_answer)
+                .replace("{{ANSWER}}",answer)
+                
+            logging.info(f"thread{thread_id}:auto_prove:extract_core_logic_prompt={extract_core_logic_prompt}")
             core_logic = self.chat_model.invoke([SystemMessage(extract_core_logic_prompt)]).content
             logging.info(f"thread{thread_id}:auto_prove:core_logic={core_logic}")
+            
             fol_formula = self._formal_language_converter(core_logic)
             premises,goal = fol_formula
             premises = premises + self.premises
@@ -378,10 +379,10 @@ class ATPagent:
             logging.info(f"thread{thread_id}:auto_prove:formula={fol_formula}")
             
             if not is_proved:
-                request = self._enhaned_request(none_closed_branches,origin_request.content,origin_answer,premises,goal)
+                request = self._enhaned_request(none_closed_branches,origin_request.content,answer,premises,goal)
                 logging.info(f"thread{thread_id}:auto_prove:enhanced_request={request}")
                 
-                return {"history" : [EnhancedRequestMessage(request,origin_answer=origin_answer, core_logic=core_logic)]
+                return {"history" : [EnhancedRequestMessage(request,origin_answer=answer, core_logic=core_logic)]
                         ,"mode": Mode.ENHANCED
                         ,"tool_count" : state["tool_count"]
                         ,"enhance_count" : state["enhance_count"] + 1
