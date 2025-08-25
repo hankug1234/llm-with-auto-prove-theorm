@@ -262,7 +262,10 @@ class Tableau:
                     br2 = branch[:f_idx] + [self._make_notated(free, b2)] + branch[f_idx+1:]
                     new_tb = tableau[:b_idx] + tableau[b_idx+1:] + [br1, br2] 
                     return (new_tb, qdepth, equality)
-                
+            
+            inst_notateds = []
+            original_notateds = []
+            new_branch = []
             # 4) Gamma (universal)
             for f_idx, (free, form) in enumerate(branch):
                 if self._is_universal(form) and qdepth > 0:
@@ -270,9 +273,14 @@ class Tableau:
                     inst = self._instance(form, v) 
                     inst_notated = self._make_notated(free, inst)
                     original_notated = self._make_notated([v] + free, form)
-                    new_branch = [inst_notated] + branch[:f_idx] + branch[f_idx+1:] + [original_notated]
-                    new_tableau = tableau[:b_idx] + tableau[b_idx+1:] + [new_branch]
-                    return (new_tableau, qdepth - 1, equality)
+                    inst_notateds.append(inst_notated)
+                    original_notateds.append(original_notated)
+                    new_branch = branch[:f_idx] + branch[f_idx+1:]
+                    
+            if len(inst_notateds) > 0:
+                new_branch = inst_notateds + new_branch + original_notateds
+                new_tableau = tableau[:b_idx] + tableau[b_idx+1:] + [new_branch]
+                return (new_tableau, qdepth - 1, equality)
                 
             # 5) Equality reflexivity EXPANSION  (t = t 삽입)
             for _, formula in branch:

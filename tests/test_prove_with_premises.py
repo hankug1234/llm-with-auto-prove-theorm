@@ -96,7 +96,7 @@ if __name__ == "__main__":
         premises, goal = interpreter("∀x ((Immortal(x) ∧ Human(x)) → ¬Human(x))".strip())
         premises = [interpreter(fol)[1] for fol,_ in world_rules]
         
-        result, branches = prove_with_premises(premises, goal, qdepth=60)
+        result, branches = prove_with_premises(premises, goal, qdepth=3)
         
         print("none cloesed branches: ")
             
