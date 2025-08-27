@@ -93,7 +93,7 @@ if __name__ == "__main__":
         ] 
         tableau_prover = Tableau()
         prove_with_premises = tableau_prover.prove
-        premises, goal = interpreter("∀x ((Immortal(x) ∧ Human(x)) → ¬Human(x))".strip())
+        premises, goal = interpreter("∀x (Immortal(x) ∧ Human(x) → ¬Human(x))".strip())
         premises = [interpreter(fol)[1] for fol,_ in world_rules]
         
         result, branches = prove_with_premises(premises, goal, qdepth=3)

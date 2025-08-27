@@ -110,7 +110,17 @@ def _pre_modification(formula: Formula)->Formula:
                         remain = queue[0]
                     else: 
                         remain = queue
-                    return (f,temp,_pre_modification(remain))
+                    if f == Operation.AND or f == Operation.OR:
+                        remain = [] 
+                        while not is_atom(queue[0]):
+                            remain.append(queue.popleft())
+                        if len(queue) >=1 and is_atom(queue[0]):
+                            remain.append(queue.popleft())
+                        else:
+                            raise String2FormulaConvertException("string to formula convert error")
+                        temp =  (f,temp,_pre_modification(remain))
+                    else:
+                        return (f,temp,_pre_modification(remain))
                 elif f.is_quantifiers():
                     if len(queue) == 1:
                         remain = queue[0]
