@@ -358,7 +358,7 @@ class ATPagent:
                 ,"tool_count" : state["tool_count"]
                 ,"enhance_count" : state["enhance_count"]
                 ,"is_proved" : is_proved
-                ,"error" : error} 
+                ,"error" : Exception("enhance request fail for current reason")} 
             
             origin_request = self._current_user_request(state["history"])
             

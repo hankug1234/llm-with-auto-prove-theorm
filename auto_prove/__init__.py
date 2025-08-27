@@ -37,7 +37,7 @@ class Predicate:
         self.name = name
         self.args = args
     def __repr__(self):
-        return f"predicate_{self.name}({', '.join(map(str, self.args))})"
+        return f"{self.name}({', '.join(map(str, self.args))})"
     def __str__(self):
         return f"{self.name}({', '.join(map(str, self.args))})"
     def __eq__(self, other):
@@ -55,7 +55,7 @@ class Var:
     def __init__(self, name: str):
         self.name = name
     def __repr__(self):
-        return "variable_" + self.name
+        return self.name
     def __str__(self):
         return self.name
     def __eq__(self, other):
@@ -68,7 +68,7 @@ class Function:
         self.name = name
         self.args = args
     def __repr__(self):
-        return f"function_{self.name}({', '.join(map(str, self.args))})"
+        return f"{self.name}({', '.join(map(str, self.args))})"
     def __str__(self):
         return f"{self.name}({', '.join(map(str, self.args))})"
     def __eq__(self, other):
@@ -85,7 +85,7 @@ class Constant:
     def __init__(self, const: str):
         self.const = const 
     def __repr__(self):
-        return f"constance_{self.const}"
+        return f"{self.const}"
     def __str__(self):
         return f"{self.const}"
     def __eq__(self, other):
