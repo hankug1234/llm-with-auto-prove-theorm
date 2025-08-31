@@ -17,7 +17,8 @@ from agent.toolkits import Tools
 from langgraph.prebuilt import ToolNode
 from auto_prove.tableau import Tableau
 from auto_prove import Formula, Notated, Operation, operation2string
-from prompt.enhanced_request_by_none_closed_branches import PROMPT as enhanced_request
+from prompt.enhanced_request_by_none_closed_branches import EXTRACT_PROBLEM as extract_problem
+from prompt.enhanced_request_by_none_closed_branches import APPLY_REVISION_PROMPT as apply_revision
 from prompt.fol_convertor_mini import PROMPT as fol_convertor_mini 
 from prompt.agent_modelfile import PROMPT as agent_modelfile
 from prompt.revise import PROMPT as revise_prompt
@@ -46,10 +47,11 @@ class Mode(Enum):
 
 
 class EnhancedRequestMessage(SystemMessage):
-    def __init__(self, content: str,origin_answer: str, core_logic: str ,**kwargs):
+    def __init__(self, content: str,origin_answer: str, core_logic: str , revision_prompt : str ,**kwargs):
         super().__init__(content=content, **kwargs)
         self.origin_answer = origin_answer
         self.core_logic = core_logic
+        self.revision_prompt = revision_prompt
         
     def __repr__(self):
         return f"EnhancedMessage(content={self.content!r})"
@@ -240,7 +242,7 @@ class ATPagent:
         return None
             
     def _enhaned_request(self, branches: List[List[Notated]], request:str,\
-        answer:str, premises:List[Formula], goal:Formula) -> str:
+        answer:str, premises:List[Formula], nl_premises:List[str] ,goal:Formula) -> Tuple[str,str]:
         
         branches = [[fol2sentance(notate[1]) for notate in branch] for branch in branches]
         branches = [[f"({f})" for f in branch if f is not None] for branch in branches ]
@@ -258,12 +260,22 @@ class ATPagent:
         premises = [f" {i}. {fol2sentance(premise)}" for i,premise in enumerate(premises)]
         premises = "\n".join(premises)
         
-        return enhanced_request\
+        nl_premises = [f" {i}. {premise}" for i,premise in enumerate(nl_premises)]
+        nl_premises = "\n".join(nl_premises)
+        
+        extraction = extract_problem\
         .replace("{{USER_REQUEST}}",f"- {request}")\
         .replace("{{LLM_ANSWER}}",f"- {answer}")\
         .replace("{{TARGET}}",f"- {target}")\
         .replace("{{PREMISES}}",premises)\
         .replace("{{OPEN_BRANCHES}}",branches)
+        
+        revision = apply_revision\
+        .replace("{{USER_REQUEST}}",f"- {request}")\
+        .replace("{{LLM_ANSWER}}",f"- {answer}")\
+        .replace("{{PREMISES}}",nl_premises)\
+            
+        return (extraction, revision)
     
     def _get_result(self,script: str, pattern : str):
         if script is None:
@@ -288,6 +300,33 @@ class ATPagent:
 
         return None
     
+    def _revision(self, extraction_prompt, revision_prompt , origin_answer, core_logic):
+        
+        response = self.chat_model.invoke([SystemMessage(extraction_prompt)])
+        fail = self._get_result(response.content, FAIL)
+        revise = self._get_result(response.content, REVISE)
+        if fail is not None: 
+            return EnhanceFailMessage(fail,origin_answer=origin_answer, core_logic=core_logic)
+        elif revise is not None:
+            pass
+        else:
+            raise Exception(f"enhanced request fail : {response.content}")
+        
+        revision_prompt = revision_prompt\
+        .replace("{{DIAGNOSIS_REVISE_BLOCK}}", revise)
+        
+        response = self.chat_model.invoke([SystemMessage(revision_prompt)])
+        fail = self._get_result(response.content, FAIL)
+        revise = self._get_result(response.content, REVISE)
+        if fail is not None: 
+            return EnhanceFailMessage(fail,origin_answer=revision_prompt, core_logic=core_logic)
+        elif revise is not None:
+            response = AIMessage(revise)
+        else:
+            raise Exception(f"enhanced request fail : {response.content}")
+        
+        return response
+    
     def _core_model(self,state:State, config: RunnableConfig):
         thread_id = config.get("configurable", {}).get("thread_id")
         error, is_proved = state["error"], state["is_proved"]
@@ -297,15 +336,10 @@ class ATPagent:
         try:
             message = state["history"][-1]
             if isinstance(message,EnhancedRequestMessage):
-                response = self.chat_model.invoke([SystemMessage(message.content)])
-                fail = self._get_result(response.content, FAIL)
-                revise = self._get_result(response.content, REVISE)
-                if fail is not None: 
-                    response = EnhanceFailMessage(fail,origin_answer=message.origin_answer, core_logic=message.core_logic)
-                elif revise is not None:
-                    response = AIMessage(revise)
-                else:
-                    raise Exception(f"enhanced request fail : {response.content}")
+                response = self._revision(message.content
+                                          ,message.revision_prompt
+                                          ,message.origin_answer
+                                          ,message.core_logic)
             elif isinstance(message,SystemMessage):
                 logging.info(f"thread{thread_id}:core_model:system_request={message}")
                 response = self.chat_model.invoke([message])
@@ -379,10 +413,13 @@ class ATPagent:
             logging.info(f"thread{thread_id}:auto_prove:formula={fol_formula}")
             
             if not is_proved:
-                request = self._enhaned_request(none_closed_branches,origin_request.content,answer,premises,goal)
-                logging.info(f"thread{thread_id}:auto_prove:enhanced_request={request}")
+                extraction, revision = self._enhaned_request(none_closed_branches,origin_request.content,answer,premises,self.nl_premises,goal)
+                logging.info(f"thread{thread_id}:auto_prove:\nextraction_prompt={extraction}\nrevision_prompt={revision}")
                 
-                return {"history" : [EnhancedRequestMessage(request,origin_answer=answer, core_logic=core_logic)]
+                return {"history" : [EnhancedRequestMessage(extraction
+                                                            ,origin_answer=answer
+                                                            ,core_logic=core_logic
+                                                            ,revision_prompt=revision)]
                         ,"mode": Mode.ENHANCED
                         ,"tool_count" : state["tool_count"]
                         ,"enhance_count" : state["enhance_count"] + 1
