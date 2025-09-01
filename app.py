@@ -26,7 +26,8 @@ user_instruction = {
                     "{{INPUT_FORMAT}}":modelfile.INPUT_FORMAT,
                     "{{OUTPUT_FORMAT}}":modelfile.OUTPUT_FORMAT,
                     "{{RULES}}":modelfile.RULES,
-                    "{{EXAMPLES}}":modelfile.EXAMPLES}
+                    "{{EXAMPLES}}":modelfile.EXAMPLES
+                    }
 
 
 #chat = ChatGPT(model_name="gpt-4o",buffer_length = 3000 ,max_tokens = 15000, timeout=60, max_retries=1,debug_mode_open=False)
@@ -34,15 +35,14 @@ agent = ATPagent(user_instruction=user_instruction,premises=[],response_parser=p
 session = agent.get_sesesion()
 RULEBOOK_DIR = "./rule_books"  
 
+rules_state = gr.State([])        # list[str]
+premises = gr.State([])
+log_state = gr.State("")          # str
+chat_state = gr.State([])         # list[[user, assistant], ...]
+
 # ---------- Helper functions ----------
 def timestamp() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-def fmt_rules_md(rules: list[str]) -> str:
-    if not rules:
-        return "*(No rules yet. Add some on the left.)*"
-    lines = [f"{i+1}. {r}" for i, r in enumerate(rules)]
-    return "### Active TRPG Rules\n" + "\n".join(f"- {ln}" for ln in lines)
 
 def append_log(log_text: str, entry: str) -> str:
     line = f"[{timestamp()}] {entry}"
@@ -54,17 +54,6 @@ def get_premises(premises: list) -> list:
 def rules_to_choices(rules: list[str]) -> list[str]:
     """Dropdown 표시용 선택지 (번호. 내용) 형태로 변환"""
     return [f"{i+1}. {r}" for i, r in enumerate(rules)]
-
-def parse_choice_to_index(choice: str | None) -> int | None:
-    """'3. some rule' -> 2 (0-based index)"""
-    if not choice:
-        return None
-    try:
-        idx_str = choice.split(".", 1)[0].strip()
-        idx = int(idx_str) - 1
-        return idx if idx >= 0 else None
-    except Exception:
-        return None
 
 def list_rulebooks(dirpath: str) -> list[str]:
     """RULEBOOK_DIR 안의 .json 파일 목록을 반환 (파일명만)."""
@@ -124,7 +113,7 @@ def add_rule(rule_text: str, rules: list[str], log_text: str):
     rule_text = (rule_text or "").strip()
     if not rule_text:
         # No-op UI update
-        return gr.update(), rules, log_text, fmt_rules_md(rules), gr.update(choices=rules_to_choices(rules), value=None)
+        return gr.update(), rules, log_text,gr.update(value=log_text), gr.update(choices=rules, value=[])
     # Deduplicate while preserving order
     if rule_text not in rules:
         fol = agent._natural2fol(rule_text)
@@ -136,8 +125,8 @@ def add_rule(rule_text: str, rules: list[str], log_text: str):
         gr.update(value=''),
         rules,
         log_text,
-        fmt_rules_md(rules),
-        gr.update(choices=rules_to_choices(rules), value=None),
+        gr.update(value=log_text),
+        gr.update(choices=rules, value=[])
     )
 
 def clear_rules(rules: list[str], log_text: str):
@@ -146,20 +135,18 @@ def clear_rules(rules: list[str], log_text: str):
     deleted = [(agent._fol2formula(rule.split(":")[1].strip())[1],rule.split(":")[0].strip()) for rule in rules]
     agent._remove_premises(deleted)
     # 드롭다운도 비우기
-    return [], log_text, fmt_rules_md([]), gr.update(choices=[], value=None)
+    return [], log_text, gr.update(value=log_text), gr.update(choices=[], value=[])
 
 # 🔸 신규: 개별 삭제
-def delete_selected_rule(selected_choice: str | None, rules: list[str], log_text: str):
-    idx = parse_choice_to_index(selected_choice)
-    if idx is None or idx >= len(rules):
-        # 선택 안 했거나 인덱스 불가 → 상태만 다시 반영
-        return rules, log_text, fmt_rules_md(rules), gr.update(choices=rules_to_choices(rules), value=None)
-    removed = rules[idx]
-    deleted = [(agent._fol2formula(removed.split(":")[1].strip())[1] ,removed.split(":")[0].strip())]
-    agent._remove_premises(deleted)
-    new_rules = rules[:idx] + rules[idx+1:]
-    log_text = append_log(log_text, f'Removed rule #{idx+1}: "{removed}"')
-    return new_rules, log_text, fmt_rules_md(new_rules), gr.update(choices=rules_to_choices(new_rules), value=None)
+def delete_selected_rule(selected: str | None, rules: list[str], log_text: str):
+    if selected is None or len(selected) == 0:
+        return rules, log_text, gr.update(value=log_text), gr.update(choices=rules, value=[])
+    rules = [rule for rule in rules if rule not in selected]
+    deleted = [(agent._fol2formula(rule.split(":")[1].strip())[1] ,rule.split(":")[0].strip()) for rule in rules]
+    for d in deleted:
+        agent._remove_premises(d)
+        log_text = append_log(log_text, f'Removed rule #: "{d[1]}"')
+    return rules, log_text, gr.update(value=log_text), gr.update(choices=rules, value=[])
 
 # ---------- Chat handling ----------
 def handle_chat(user_msg: str, chat_history: list, rules: list[str], log_text: str):
@@ -196,16 +183,14 @@ def handle_chat(user_msg: str, chat_history: list, rules: list[str], log_text: s
     log_text = append_log(log_text, f'GM : "{log}"')
     return chat_history, log_text
 
+def show_items():
+    return [[rule] for rule in rules_state]
+
 # ---------- Build UI ----------
 with gr.Blocks(title="TRPG Game Master Agent", fill_height=True) as demo:
-    gr.Markdown("## 🎲 TRPG Game Master — Rule-aware Chat\n"
+    gr.Markdown("## 🎲 TRPG Game Master Chat\n"
                 "Left: system logs and rules • Right: chat session.\n"
                 "_(Outputs stay natural language; your pipeline can then translate to FOL and verify with tableau.)_")
-
-    rules_state = gr.State([])        # list[str]
-    premises = gr.State([])
-    log_state = gr.State("")          # str
-    chat_state = gr.State([])         # list[[user, assistant], ...]
 
     with gr.Row():
         # ---------- LEFT PANEL ----------
@@ -233,19 +218,14 @@ with gr.Blocks(title="TRPG Game Master Agent", fill_height=True) as demo:
                 with gr.Row():
                     add_btn = gr.Button("Add Rule", variant="primary")
                     clr_btn = gr.Button("Clear All Rules", variant="secondary")
-                
-                with gr.Row():
-                    rules_md = gr.Markdown(fmt_rules_md([]))
-                
-                # 🔸 신규: 개별 삭제 UI (현재 룰 선택 + 삭제 버튼)
-                with gr.Row():
-                    rule_select = gr.Dropdown(
-                        label="Select a rule to delete",
-                        choices=[],
-                        value=None,
-                        interactive=True,
-                    )
                     del_btn = gr.Button("Delete Selected", variant="stop")
+                
+                with gr.Row():
+                    dataset = gr.CheckboxGroup(
+                                choices=rules_state,
+                                label="rules",
+                                inline=False
+                            )
 
         # ---------- RIGHT PANEL ----------
         with gr.Column(scale=7, min_width=520):
@@ -257,20 +237,20 @@ with gr.Blocks(title="TRPG Game Master Agent", fill_height=True) as demo:
     add_btn.click(
         add_rule,
         inputs=[rule_input, rules_state, log_state],
-        outputs=[rule_input, rules_state, log_state, rules_md, rule_select],  # 🔸 드롭다운도 갱신
+        outputs=[rule_input, rules_state, log_state, log_box, dataset],  # 🔸 드롭다운도 갱신
     )
 
     clr_btn.click(
         clear_rules,
         inputs=[rules_state, log_state],
-        outputs=[rules_state, log_state, rules_md, rule_select],  # 🔸 드롭다운 비우기
+        outputs=[rules_state, log_state, log_box, dataset],  # 🔸 드롭다운 비우기
     )
 
     # 🔸 개별 삭제 이벤트
     del_btn.click(
         delete_selected_rule,
-        inputs=[rule_select, rules_state, log_state],
-        outputs=[rules_state, log_state, rules_md, rule_select],
+        inputs=[dataset, rules_state, log_state],
+        outputs=[rules_state, log_state, log_box, dataset],
     )
 
     def sync_log(log_text):  # Reflect log_state into readonly textbox
@@ -330,7 +310,7 @@ with gr.Blocks(title="TRPG Game Master Agent", fill_height=True) as demo:
     load_rb.click(
         load_rulebook_file,
         inputs=[rulebook_select, rules_state, log_state],
-        outputs=[rules_state, log_state, rules_md, rule_select],
+        outputs=[rules_state, log_state, dataset],
     ).then(
         lambda log: gr.update(value=log), inputs=[log_state], outputs=[log_box]  # ← log_box를 유지할 경우
     )
