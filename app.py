@@ -58,10 +58,10 @@ def load_rulebook_file(filename: str, rules: list[str], log_text: str):
     파일 형식은 [{ "formula": "...", "description": "..."}, ...] JSON 배열을 기대.
     """
     if not filename:
-        return gr.update(value=rules), gr.update(value=log_text), gr.update(choices=rules, value=[])
+        return gr.update(value=rules), gr.update(value=log_text), gr.update(value=log_text) ,gr.update(choices=rules, value=[])
     path = os.path.join(RULEBOOK_DIR, filename)
     if not os.path.isfile(path):
-        return  gr.update(value=rules), gr.update(value=log_text), gr.update(choices=rules, value=[])
+        return  gr.update(value=rules), gr.update(value=log_text), gr.update(value=log_text) ,gr.update(choices=rules, value=[])
 
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -75,10 +75,8 @@ def load_rulebook_file(filename: str, rules: list[str], log_text: str):
             if isinstance(formula, str) and isinstance(desc, str):
                 new_rules.append(f"{desc} : {formula}")
                 premises.append((agent._fol2formula(formula)[1],desc))
-            else:
-                continue
 
-        rules = new_rules
+        rules += new_rules
         from datetime import datetime
         log_text = (log_text + f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
                     f'Rulebook loaded: "{filename}" (rules={len(rules)})').strip()
@@ -86,9 +84,9 @@ def load_rulebook_file(filename: str, rules: list[str], log_text: str):
         log_text += f"\n{logs}"
        
         agent._set_premises(premises)
-        return  gr.update(value=rules), gr.update(value=log_text), gr.update(choices=rules, value=[])
+        return  gr.update(value=rules), gr.update(value=log_text), gr.update(value=log_text) ,gr.update(choices=rules, value=[])
     except Exception as e:
-        return  gr.update(value=rules), gr.update(value=log_text + f"\n{e}"), gr.update(choices=rules, value=[])
+        return  gr.update(value=rules), gr.update(value=log_text + f"\n{e}"), gr.update(value=log_text) ,gr.update(choices=rules, value=[])
 
 # ---------- Rule management ----------
 def add_rule(rule_text: str, rules: list[str], log_text: str):
@@ -127,11 +125,14 @@ def clear_rules(rules: list[str], log_text: str):
 def delete_selected_rule(selected: list[str] | None, rules: list[str], log_text: str):
     if selected is None or len(selected) == 0:
         return rules, log_text, gr.update(value=log_text), gr.update(choices=rules, value=[])
-    rules = [rule for rule in rules if rule not in selected]
-    deleted = [(agent._fol2formula(rule.split(":")[1].strip())[1] ,rule.split(":")[0].strip()) for rule in selected]
-    for d in deleted:
-        agent._remove_premises(d)
-        log_text = append_log(log_text, f'Removed rule #: "{d[1]}"')
+    deleted = set(selected)
+    rules = [rule for rule in rules if rule not in deleted]
+    new_premises = [(agent._fol2formula(rule.split(":")[1].strip())[1] ,rule.split(":")[0].strip()) for rule in rules]
+    agent._set_premises(new_premises)
+    for d in selected:
+        log_text = append_log(log_text, f'Removed rule #: "{d}"')
+    rules_txt = "\n".join(rules)
+    log_text = append_log(log_text, f'rules : \n{rules_txt}')
     return gr.update(value=rules), gr.update(value=log_text), gr.update(value=log_text), gr.update(choices=rules, value=[])
 
 # ---------- Chat handling ----------
@@ -298,10 +299,9 @@ with gr.Blocks(title="TRPG Game Master Agent", fill_height=True) as demo:
     load_rb.click(
         load_rulebook_file,
         inputs=[rulebook_select, rules_state, log_state],
-        outputs=[rules_state, log_state, dataset],
-    ).then(
-        lambda log: gr.update(value=log), inputs=[log_state], outputs=[log_box]  # ← log_box를 유지할 경우
+        outputs=[rules_state, log_state, log_box, dataset],
     )
+    
 
 if __name__ == "__main__":
     demo.launch()
