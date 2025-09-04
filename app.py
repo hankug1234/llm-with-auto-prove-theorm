@@ -52,101 +52,96 @@ def list_rulebooks(dirpath: str) -> list[str]:
         return []
     return sorted([f for f in os.listdir(dirpath) if f.lower().endswith(".json")])
 
-def load_rulebook_file(filename: str, rules: list[str], log_text: str):
+def load_rulebook_file(filename: str, log_text: str):
     """
     선택한 파일을 읽어 rules_state를 교체.
     파일 형식은 [{ "formula": "...", "description": "..."}, ...] JSON 배열을 기대.
     """
-    if not filename:
-        return gr.update(value=rules), gr.update(value=log_text), gr.update(value=log_text) ,gr.update(choices=rules, value=[])
     path = os.path.join(RULEBOOK_DIR, filename)
-    if not os.path.isfile(path):
-        return  gr.update(value=rules), gr.update(value=log_text), gr.update(value=log_text) ,gr.update(choices=rules, value=[])
+    
+    if not filename or not os.path.isfile(path):
+        return rules, log_text, gr.update(value=log_text) ,gr.update(choices=rules, value=[])
 
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        # JSON -> [(formula, description)] 로 변환
-        new_rules = []
-        premises = []
-        for i, item in enumerate(data):
-            formula = item.get("formula")
-            desc = item.get("description")
-            if isinstance(formula, str) and isinstance(desc, str):
-                new_rules.append(f"{desc} : {formula}")
-                premises.append((agent._fol2formula(formula)[1],desc))
+            # JSON -> [(formula, description)] 로 변환
+            new_rules = []
+            premises = []
+            for item in data:
+                formula = item.get("formula")
+                desc = item.get("description")
+                if isinstance(formula, str) and isinstance(desc, str):
+                    new_rules.append(f"{desc} : {formula}")
+                    premises.append((agent._fol2formula(formula)[1],desc))
 
-        rules += new_rules
-        from datetime import datetime
-        log_text = (log_text + f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
-                    f'Rulebook loaded: "{filename}" (rules={len(rules)})').strip()
-        logs = "\n".join([f"{i}. {premise}" for i, premise in enumerate(rules)])
-        log_text += f"\n{logs}"
-       
-        agent._set_premises(premises)
-        return  gr.update(value=rules), gr.update(value=log_text), gr.update(value=log_text) ,gr.update(choices=rules, value=[])
+            rules = new_rules
+            from datetime import datetime
+            log_text = (log_text + f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]" + f'Rulebook loaded: "{filename}" (rules={len(rules)})').strip()
+            logs = "\n".join([f"{i}. {premise}" for i, premise in enumerate(rules)])
+            log_text += f"\n{logs}"
+
+            agent._remove_premises()
+            agent._set_premises(premises)
+            return  rules, log_text, gr.update(value=log_text) ,gr.update(choices=rules, value=[])
     except Exception as e:
-        return  gr.update(value=rules), gr.update(value=log_text + f"\n{e}"), gr.update(value=log_text) ,gr.update(choices=rules, value=[])
+        og_text += f"\n{e}"
+        return  rules, log_text, gr.update(value=log_text) ,gr.update(choices=rules, value=[])
 
 # ---------- Rule management ----------
 def add_rule(rule_text: str, rules: list[str], log_text: str):
     rule_text = (rule_text or "").strip()
-    if not rule_text:
-        # No-op UI update
-        return gr.update(value=''), \
-               gr.update(value=rules), \
-               gr.update(value=log_text),\
-               gr.update(value=log_text), gr.update(choices=rules, value=[])
-               
-    # Deduplicate while preserving order
-    if rule_text not in rules:
+    try:
+        if not rule_text:
+            raise Exception("there is empty rule appended")
+        
         fol = agent._natural2fol(rule_text)
         rules = rules + [f"{rule_text} : {fol}"]
         agent._set_premises([(agent._fol2formula(fol)[1],rule_text)])
         log_text = append_log(log_text, f'Rule added: "{rule_text} : {fol}"')
-    # 입력칸 비우기 + 룰 목록/드롭다운 갱신
-    return (
-        gr.update(value=''),
-        gr.update(value=rules),
-        gr.update(value=log_text),
-        gr.update(value=log_text),
-        gr.update(choices=rules, value=[])
-    )
-
+        # 입력칸 비우기 + 룰 목록/드롭다운 갱신
+        return (
+            gr.update(value=''),
+            rules,
+            log_text,
+            gr.update(value=log_text),
+            gr.update(choices=rules, value=[])
+            )
+    except Exception as e:
+        log_text += f"\n error : {e}"
+        return gr.update(value=''), \
+               rules, \
+               log_text,\
+               gr.update(value=log_text), gr.update(choices=rules, value=[])
+        
 def clear_rules(rules: list[str], log_text: str):
-    if rules:
-        log_text = append_log(log_text, f"All rules cleared. (count={len(rules)})")
-    deleted = [(agent._fol2formula(rule.split(":")[1].strip())[1],rule.split(":")[0].strip()) for rule in rules]
-    agent._remove_premises(deleted)
-    # 드롭다운도 비우기
-    return gr.update(value=[]), gr.update(value=log_text), gr.update(value=log_text), gr.update(choices=[], value=[])
+    log_text = append_log(log_text, f"All rules cleared. (count={len(rules)})")
+    agent._remove_premises()
+    return [], log_text, gr.update(value=log_text), gr.update(choices=[], value=[])
 
-# 🔸 신규: 개별 삭제
 def delete_selected_rule(selected: list[str] | None, rules: list[str], log_text: str):
     if selected is None or len(selected) == 0:
         return rules, log_text, gr.update(value=log_text), gr.update(choices=rules, value=[])
-    deleted = set(selected)
-    rules = [rule for rule in rules if rule not in deleted]
-    new_premises = [(agent._fol2formula(rule.split(":")[1].strip())[1] ,rule.split(":")[0].strip()) for rule in rules]
-    agent._set_premises(new_premises)
+    
     for d in selected:
+        rules.remove(d)
         log_text = append_log(log_text, f'Removed rule #: "{d}"')
+        
+    new_premises = [(agent._fol2formula(rule.split(":")[1].strip())[1] ,rule.split(":")[0].strip()) for rule in rules]
+    agent._remove_premises()
+    agent._set_premises(new_premises)
     rules_txt = "\n".join(rules)
     log_text = append_log(log_text, f'rules : \n{rules_txt}')
-    return gr.update(value=rules), gr.update(value=log_text), gr.update(value=log_text), gr.update(choices=rules, value=[])
+    return rules, log_text, gr.update(value=log_text), gr.update(choices=rules, value=[])
 
-# ---------- Chat handling ----------
-def handle_chat(user_msg: str, chat_history: list, rules: list[str], log_text: str):
+def handle_chat(user_msg: str, chat_history: list, log_text: str):
     global agent, session
+    
+    if not user_msg:
+        return chat_history, gr.update(value=log_text)
     
     user = (user_msg or "").strip()
     user_message = {"role": "user", "content": user}
-    
-    if not user:
-        return gr.update(value=chat_history), gr.update(value=log_text)
-
-    response = None
-
     response = session.send(user)
     
     ok = response["ok"]
@@ -163,20 +158,17 @@ def handle_chat(user_msg: str, chat_history: list, rules: list[str], log_text: s
     if response is None:
         agent = ATPagent(user_instruction=user_instruction,premises=[],response_parser=parser)
         session = agent.get_sesesion()
-        return gr.update(value=[]), gr.update(value=log_text)
+        log_text += f"\n initialize agent"
+        return [], gr.update(value=log_text)
 
     chat_history = chat_history + [user_message, message]
     log_text = append_log(log_text, f'User: "{user}"')
     log_text = append_log(log_text, f'GM : "{log}"')
-    return gr.update(value=chat_history), gr.update(value=log_text)
-
-def show_items():
-    return [[rule] for rule in rules_state]
+    return chat_history, gr.update(value=log_text)
 
 # ---------- Build UI ----------
 with gr.Blocks(title="TRPG Game Master Agent", fill_height=True) as demo:
     rules_state = gr.State([])        # list[str]
-    premises = gr.State([])
     log_state = gr.State("")          # str
     chat_state = gr.State([])         # list[[user, assistant], ...]
     gr.Markdown("## 🎲 TRPG Game Master Chat\n"
@@ -245,27 +237,10 @@ with gr.Blocks(title="TRPG Game Master Agent", fill_height=True) as demo:
     def sync_log(log_text):  # Reflect log_state into readonly textbox
         return gr.update(value=log_text)
 
-    send_btn.click(
-        handle_chat,
-        inputs=[user_box, chat_state, rules_state, log_state],
-        outputs=[chat_state, log_state],
-    ).then(
-        fn=lambda: gr.update(value=""),
-        inputs=None,
-        outputs=user_box,
-    ).then(
-        sync_log,
-        inputs=[log_state],
-        outputs=[log_box],
-    ).then(
-        lambda hist: gr.update(value=hist),
-        inputs=[chat_state],
-        outputs=[chat],
-    )
-
-    user_box.submit(
-        handle_chat,
-        inputs=[user_box, chat_state, rules_state, log_state],
+    gr.on(
+        triggers = [send_btn.click, user_box.submit],
+        fn = handle_chat,
+        inputs=[user_box, chat_state, log_state],
         outputs=[chat_state, log_state],
     ).then(
         fn=lambda: gr.update(value=""),
@@ -298,7 +273,7 @@ with gr.Blocks(title="TRPG Game Master Agent", fill_height=True) as demo:
     # 로드 버튼: 파일 읽고 rules_state 교체 -> 슬롯 렌더 -> 프리뷰 업데이트 -> (선택) 로그 박스 반영
     load_rb.click(
         load_rulebook_file,
-        inputs=[rulebook_select, rules_state, log_state],
+        inputs=[rulebook_select, log_state],
         outputs=[rules_state, log_state, log_box, dataset],
     )
     

@@ -194,12 +194,19 @@ class ATPagent:
             self.nl_premises.append(nl_premise)
         self.set_fol_translater_mode()
     
-    def _remove_premises(self, premises):
-        for premise, nl_premise in premises: 
-            self.premises.remove(premise)
-            self.nl_premises.remove(nl_premise)
+    def _remove_premises(self):
+        self.premises = []
+        self.nl_premises = []
         self.set_fol_translater_mode()
     
+    def _remove_premise(self, premises: List[Tuple[Formula,str]]):
+        for premise, description in premises:
+            if premises in self.premises:
+                self.premises.remove(premise)
+            if description in self.nl_premises:
+                self.nl_premises.remove(description)
+        self.set_fol_translater_mode()
+            
     def _make_agent_model(self):
         if self.user_instruction is None:
             return ""
