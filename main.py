@@ -53,7 +53,7 @@ if __name__ == "__main__":
     premises = [(interpreter(fol)[1],rule) for fol,rule in world_rules]
     
     #chat = ChatGPT(model_name="gpt-4o",buffer_length = 3000 ,max_tokens = 15000, timeout=60, max_retries=1,debug_mode_open=False)
-    agent = ATPagent(user_instruction=user_instruction,premises=premises,response_parser=parser)
+    agent = ATPagent(manager_prompt=user_instruction,premises=premises,response_parser=parser)
     session = agent.get_sesesion()
     
     while True:

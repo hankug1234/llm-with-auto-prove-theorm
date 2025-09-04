@@ -64,6 +64,14 @@ class EnhanceFailMessage(AIMessage):
         
     def __repr__(self):
         return f"EnhancedMessage(content={self.content!r})"
+
+class PersonaMessage(AIMessage):
+    def __init__(self, content: str,origin_answer:str,**kwargs):
+        super().__init__(content=content, **kwargs)
+        self.origin_answer = origin_answer
+        
+    def __repr__(self):
+        return f"PersonaMessage(content={self.content!r})"
     
 class ChatModelNoneException(Exception):
     def __init__(self,message="chat model is None"):
@@ -119,7 +127,7 @@ class ATPagent:
     def __init__(self
                  ,user_id : str = "admin"
                  ,end_signal : str = "kill"
-                 ,user_instruction : dict = {
+                 ,manager_prompt : dict = {
                     "{{CONCEPT}}" : "",
                     "{{USER_INSTRUCTION}}":"",
                     "{{INPUT_FORMAT}}":"",
@@ -127,6 +135,7 @@ class ATPagent:
                     "{{RULES}}":"",
                     "{{EXAMPLES}}":""
                  }
+                 ,persona_prompt : dict | None = None
                  ,premises : List[Tuple[Formula,str]] = []
                  ,response_parser = ResponseParser
                  ,max_attemption : int = 3
@@ -150,7 +159,8 @@ class ATPagent:
         self.end_signal = end_signal
         self.user_id = user_id
         self.max_attemption = max_attemption
-        self.user_instruction = user_instruction
+        self.persona_prompt = persona_prompt 
+        self.manager_prompt = manager_prompt 
         
         if embeddings is None:
             embeddings = OllamaEmbeddings(model="llama3")
@@ -207,16 +217,16 @@ class ATPagent:
                 self.nl_premises.remove(description)
         self.set_fol_translater_mode()
             
-    def _make_agent_model(self):
-        if self.user_instruction is None:
+    def _make_agent_model(self, user_instruction):
+        if user_instruction is None:
             return ""
         return agent_modelfile\
-               .replace("{{CONCEPT}}",self.user_instruction["{{CONCEPT}}"])\
-               .replace("{{USER_INSTRUCTION}}",self.user_instruction["{{USER_INSTRUCTION}}"])\
-               .replace("{{INPUT_FORMAT}}",self.user_instruction["{{INPUT_FORMAT}}"])\
-               .replace("{{OUTPUT_FORMAT}}",self.user_instruction["{{OUTPUT_FORMAT}}"])\
-               .replace("{{RULES}}",self.user_instruction["{{RULES}}"])\
-               .replace("{{EXAMPLES}}",self.user_instruction["{{EXAMPLES}}"])\
+               .replace("{{CONCEPT}}",user_instruction["{{CONCEPT}}"])\
+               .replace("{{USER_INSTRUCTION}}",user_instruction["{{USER_INSTRUCTION}}"])\
+               .replace("{{INPUT_FORMAT}}",user_instruction["{{INPUT_FORMAT}}"])\
+               .replace("{{OUTPUT_FORMAT}}",user_instruction["{{OUTPUT_FORMAT}}"])\
+               .replace("{{RULES}}",user_instruction["{{RULES}}"])\
+               .replace("{{EXAMPLES}}",user_instruction["{{EXAMPLES}}"])\
     
     def _retrive_long_term_memory(self, namespace: str ,query: str , limit: int, store:BaseStore)-> list[SearchItem]: 
         return store.search((self.user_id, namespace), query=query, limit=limit)
@@ -468,6 +478,23 @@ class ATPagent:
                         ,"is_proved" : False
                         ,"error" : None}
         logging.info(f"thread{thread_id}:end_or_loop_decision:decision=end")
+        
+        if self.persona_prompt is not None and is_proved:
+            logging.info(f"thread{thread_id}:decision:persona_prompt={self.persona_prompt}")
+            response = self.chat_model.invoke([SystemMessage(self.persona_prompt),HumanMessage(state["history"][-1].content)])
+            if self.response_parser:
+                    response = self.response_parser.parse(response)
+            persona_message = PersonaMessage(response.content,origin_answer=state["history"][-1].content)
+            logging.info(f"thread{thread_id}:decision:persona_message={persona_message}")
+            return {
+                "history" : [persona_message]
+                ,"mode": Mode.END
+                ,"tool_count" : 0
+                ,"enhance_count" : 0
+                ,"is_proved" : is_proved
+                ,"error" : error
+                }
+              
         return {
                 "mode": Mode.END
                 ,"tool_count" : 0
@@ -530,9 +557,9 @@ class ATPagent:
         graph = self.graph 
         
         if self.tools:
-            user_instruction = SystemMessage(self.tools.get_template(self._make_agent_model()))
+            user_instruction = SystemMessage(self.tools.get_template(self._make_agent_model(self.manager_prompt)))
         else:
-            user_instruction = SystemMessage(self._make_agent_model())
+            user_instruction = SystemMessage(self._make_agent_model(self.manager_prompt))
                     
         def make_session():
             query = yield

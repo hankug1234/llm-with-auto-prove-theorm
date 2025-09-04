@@ -18,5 +18,9 @@
   {
     "formula": "∀x (EnemyOf(x, y) → ¬FriendOf(x, y))",
     "description": "One cannot be both an enemy and a friend at the same time."
+  },
+  {
+    "formula": "∀x (Immortal(x) ↔ ¬Mortal(x))",
+    "description": "Immortality is the negation of mortality."
   }
 ]
