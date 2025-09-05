@@ -2,6 +2,7 @@ from agent import ATPagent
 from custom_chat import ChatGPT
 from auto_prove.interpreter import pre_modification_fol_interpreter as interpreter
 from prompt import game_master_modelfile as modelfile
+from prompt import trpg_style_converter as converter
 from langchain_core.messages import AnyMessage, AIMessage
 from agent import ResponseParser
 import re
@@ -22,13 +23,22 @@ todo list
 '''
 
 if __name__ == "__main__":
-    user_instruction = {
+    manager_prompt = {
                     "{{CONCEPT}}" : modelfile.CONCEPT,
                     "{{USER_INSTRUCTION}}":modelfile.USER_INSTRUCTION,
                     "{{INPUT_FORMAT}}":modelfile.INPUT_FORMAT,
                     "{{OUTPUT_FORMAT}}":modelfile.OUTPUT_FORMAT,
                     "{{RULES}}":modelfile.RULES,
                     "{{EXAMPLES}}":modelfile.EXAMPLES
+                 }
+    
+    persona_prompt = {
+                    "{{CONCEPT}}" : converter.CONCEPT,
+                    "{{USER_INSTRUCTION}}":converter.USER_INSTRUCTION,
+                    "{{INPUT_FORMAT}}":converter.INPUT_FORMAT,
+                    "{{OUTPUT_FORMAT}}":converter.OUTPUT_FORMAT,
+                    "{{RULES}}":converter.RULES,
+                    "{{EXAMPLES}}":converter.EXAMPLES
                  }
     class ModelParser(ResponseParser):
         
@@ -53,7 +63,7 @@ if __name__ == "__main__":
     premises = [(interpreter(fol)[1],rule) for fol,rule in world_rules]
     
     #chat = ChatGPT(model_name="gpt-4o",buffer_length = 3000 ,max_tokens = 15000, timeout=60, max_retries=1,debug_mode_open=False)
-    agent = ATPagent(manager_prompt=user_instruction,premises=premises,response_parser=parser)
+    agent = ATPagent(manager_prompt=manager_prompt, persona_prompt=persona_prompt ,premises=premises,response_parser=parser)
     session = agent.get_sesesion()
     
     while True:
