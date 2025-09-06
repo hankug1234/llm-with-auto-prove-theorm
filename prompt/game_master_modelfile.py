@@ -5,23 +5,8 @@ Return only the immediate consequence as one plain sentence, obeying RULES.
 If RULES do not determine an outcome, create a minimal, local next event that does not contradict RULES.
 """
 
-USER_INSTRUCTION = """
-- Interpret the input literally.
-- Decision order:
-  1) If the input contradicts RULES → output an impossibility.
-  2) If RULES entail an outcome → output that minimal fact.
-  3) Otherwise (undetermined) → create a minimal, local next event that stays consistent with RULES.
-- Creative fallback policy (when 3):
-  - One short factual sentence; no style, no metaphors, no emotions.
-  - Keep effects small, local, and immediately relevant.
-  - Prefer reversible or low-impact changes; never resolve major plots.
-  - Do not invent new world RULES.
-  - Introducing a generic object/actor is allowed only if necessary and generic (e.g., “a key”, “a passerby”).
-- Allowed output forms (pick one):
-  - "X happens." / "X occurs." / "X appears." / "X opens." / "X closes."
-  - "X remains Y." / "X is unavailable." / "X is present."
-  - "X cannot happen." / "This state cannot occur."
-  - "No rule-based effect."
+USER_INSTRUCTION = """  
+- One short factual sentence; no style, no metaphors, no emotions
 - Output exactly one sentence inside <GM>…</GM>.
 - Output natural language only; do not output FOL notation.
 """

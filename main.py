@@ -41,7 +41,6 @@ if __name__ == "__main__":
                     "{{EXAMPLES}}":converter.EXAMPLES
                  }
     class ModelParser(ResponseParser):
-        
         def parse(self,response:AnyMessage):
             match = re.search(r"<GM>(.*?)</GM>", response.content, re.DOTALL)
             if match:

@@ -112,9 +112,9 @@ def _pre_modification(formula: Formula)->Formula:
                         remain = queue
                     if f == Operation.AND or f == Operation.OR:
                         remain = [] 
-                        while not is_atom(queue[0]):
+                        while len(queue) > 0 and not (is_atom(queue[0]) or isinstance(queue[0],tuple)):
                             remain.append(queue.popleft())
-                        if len(queue) >=1 and is_atom(queue[0]):
+                        if len(queue) >=1 and (is_atom(queue[0]) or isinstance(queue[0],tuple)):
                             remain.append(queue.popleft())
                         else:
                             raise String2FormulaConvertException("string to formula convert error")
@@ -122,11 +122,16 @@ def _pre_modification(formula: Formula)->Formula:
                     else:
                         return (f,temp,_pre_modification(remain))
                 elif f.is_quantifiers():
-                    if len(queue) == 1:
-                        remain = queue[0]
-                    else: 
-                        remain = queue
-                    return (f,queue.popleft(), _pre_modification(remain))
+                    remain = [] 
+                    var = queue.popleft()
+                    while len(queue) > 0 and not (is_atom(queue[0]) or isinstance(queue[0],tuple)):
+                        remain.append(queue.popleft())
+                    if len(queue) >=1 and (is_atom(queue[0]) or isinstance(queue[0],tuple)):
+                        remain.append(queue.popleft())
+                    else:
+                        print(remain)
+                        raise String2FormulaConvertException("string to formula convert error")
+                    temp = (f,var, _pre_modification(remain))
                 else:
                     negs = []
                     temps = []

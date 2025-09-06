@@ -451,7 +451,7 @@ class Tableau:
     def prove(self,
                 premises: List[Formula], 
                 conclusion: Formula,
-                qdepth: int = 3,
+                qdepth: int = 6,
                 equality: int = 6) -> Tuple[bool, List[List[Notated]]]:
         """
         premises  (S) 가 주어졌을 때,
