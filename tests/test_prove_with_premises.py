@@ -84,6 +84,7 @@ if __name__ == "__main__":
         from auto_prove.interpreter import fol2sentance
         from auto_prove import operation2string
         world_rules = [
+        ("∃x Human(x)","Human are exist"),
         ("∀x (Human(x) → Mortal(x))","Humans are mortal."),
         ("¬(Dead(x) ∧ Alive(x))","Death and life cannot exist simultaneously."),
         ("∀x (Wizard(x) → CanUseMagic(x))","Wizards can use magic."),
@@ -93,10 +94,10 @@ if __name__ == "__main__":
         ] 
         tableau_prover = Tableau()
         prove_with_premises = tableau_prover.prove
-        premises, goal = interpreter("∀x (Human(x) → Mortal(x)) ∧ (Immortal(x) → ¬Mortal(x)) → ¬∃x (Human(x) ∧ Immortal(x))".strip())
+        premises, goal = interpreter("∃x (Human(x) ∧ Mortal(x))".strip())
         premises = [interpreter(fol)[1] for fol,_ in world_rules]
         
-        result, branches = prove_with_premises(premises, goal, qdepth=5)
+        result, branches = prove_with_premises(premises, goal, qdepth=3)
         print("none cloesed branches: ")
             
         branches = [[fol2sentance(notate[1]) for notate in branch] for branch in branches]

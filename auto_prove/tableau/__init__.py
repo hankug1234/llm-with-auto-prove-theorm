@@ -68,8 +68,7 @@ class Tableau:
             inner = form[1]
             
             return (
-                isinstance(form, tuple) 
-                and op == Operation.NEG
+                op == Operation.NEG
                 and (
                     (isinstance(inner, tuple) and inner[0] == Operation.NEG)
                     or isinstance(inner, bool)
@@ -110,8 +109,10 @@ class Tableau:
         op = form[0]
 
         # 직접 β
-        if op in {Operation.OR, Operation.NAND,
-                Operation.IMPLIE, Operation.REVERSED_IMPLIE}:
+        if op in {Operation.OR, 
+                  Operation.NAND,
+                  Operation.IMPLIE, 
+                  Operation.REVERSED_IMPLIE}:
             return True
 
         # 부정 β :  ¬(α형)
@@ -245,14 +246,14 @@ class Tableau:
                 if self._is_unary_formula(form):
                     comp = self._component(form)
                     new_branch = branch[:f_idx] + [self._make_notated(free, comp)] + branch[f_idx+1:]
-                    return (tableau[:b_idx] + tableau[b_idx+1:] + [new_branch], qdepth, equality)
+                    return (tableau[:b_idx] + [new_branch] + tableau[b_idx+1:], qdepth, equality)
                 
             # 2) Alpha
             for f_idx, (free, form) in enumerate(branch):
                 if self._is_conjunctive(form):
                     a1, a2 = self._components(form)
                     new_branch = branch[:f_idx] + [self._make_notated(free, a1), self._make_notated(free, a2)] + branch[f_idx+1:]
-                    return (tableau[:b_idx] + tableau[b_idx+1:] + [new_branch], qdepth, equality)
+                    return (tableau[:b_idx] + [new_branch] + tableau[b_idx+1:], qdepth, equality)
                 
             # 3) Beta
             for f_idx, (free, form) in enumerate(branch):
@@ -260,11 +261,12 @@ class Tableau:
                     b1, b2 = self._components(form)
                     br1 = branch[:f_idx] + [self._make_notated(free, b1)] + branch[f_idx+1:]
                     br2 = branch[:f_idx] + [self._make_notated(free, b2)] + branch[f_idx+1:]
-                    new_tb = tableau[:b_idx] + tableau[b_idx+1:] + [br1, br2] 
+                    new_tb = tableau[:b_idx] + [br1, br2] + tableau[b_idx+1:]
                     return (new_tb, qdepth, equality)
             
             inst_notateds = []
             original_notateds = []
+            removed_notateds = set()
             new_branch = []
             # 4) Gamma (universal)
             for f_idx, (free, form) in enumerate(branch):
@@ -275,8 +277,11 @@ class Tableau:
                     original_notated = self._make_notated([v] + free, form)
                     inst_notateds.append(inst_notated)
                     original_notateds.append(original_notated)
-                    new_branch = branch[:f_idx] + branch[f_idx+1:]
-                    
+                    removed_notateds.add(f_idx)
+            
+            if len(removed_notateds) > 0:
+                new_branch = [notated for i , notated in enumerate(branch) if i not in removed_notateds]
+                        
             if len(inst_notateds) > 0:
                 new_branch = inst_notateds + new_branch + original_notateds
                 new_tableau = tableau[:b_idx] + tableau[b_idx+1:] + [new_branch]
