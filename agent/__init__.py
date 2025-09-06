@@ -159,7 +159,7 @@ class ATPagent:
         self.end_signal = end_signal
         self.user_id = user_id
         self.max_attemption = max_attemption
-        self.persona_prompt = persona_prompt 
+        self.persona_prompt = self._make_agent_model(persona_prompt)
         self.manager_prompt = manager_prompt 
         
         if embeddings is None:
@@ -560,7 +560,7 @@ class ATPagent:
             user_instruction = SystemMessage(self.tools.get_template(self._make_agent_model(self.manager_prompt)))
         else:
             user_instruction = SystemMessage(self._make_agent_model(self.manager_prompt))
-                    
+
         def make_session():
             query = yield
             state = {
