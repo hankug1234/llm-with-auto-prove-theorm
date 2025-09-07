@@ -51,6 +51,7 @@ if __name__ == "__main__":
     parser = ModelParser()
     
     world_rules = [
+        ("∃x Human(x)","Human are exist"),
         ("∀x (Human(x) → Mortal(x))","Humans are mortal."),
         ("¬(Dead(x) ∧ Alive(x))","Death and life cannot exist simultaneously."),
         ("∀x (Wizard(x) → CanUseMagic(x))","Wizards can use magic."),

@@ -1,5 +1,9 @@
 [
   {
+    "formula": "∃x Human(x)",
+    "description": "Human are exist"
+  },
+  {
     "formula": "∀x (Human(x) → Mortal(x))",
     "description": "Humans are mortal."
   },
